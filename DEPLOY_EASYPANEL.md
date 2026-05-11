@@ -5,13 +5,26 @@
 1. Copia `.env.easypanel.example` a `.env.easypanel`.
 2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, MinIO).
 
-## 2) Subir stack
+## 2) Archivo Compose (raíz del repo)
 
-Usa el compose:
+**Recomendado para GitHub + EasyPanel:** [`docker-compose.yml`](docker-compose.yml) en la **raíz del repositorio** (contextos `./apps/api` y `./apps/web`). Así el panel puede clonar el repo y ejecutar `docker compose` desde `/` sin rutas relativas frágiles.
+
+Equivalente mantenido para quien ejecute compose desde subcarpeta:
 
 `infrastructure/compose/docker-compose.easypanel.yml`
 
-En EasyPanel, configura el stack para usar ese archivo y el `.env.easypanel`.
+En EasyPanel, configura el proyecto tipo **Docker Compose** apuntando al archivo en la raíz y las variables (o sube `.env.easypanel` según permita el panel).
+
+### Pantalla «Fuente → Github» (solo metadatos del repo)
+
+| Campo | Valor |
+|--------|--------|
+| Propietario | `sistemasclinicamaicao` |
+| Repositorio | `tikets-chat` |
+| Rama | `main` |
+| Ruta de compilación | `/` (raíz; el compose y los Dockerfiles referenciados están bajo `apps/`) |
+
+Si el panel solo permite **un Dockerfile** en la raíz y no Compose, crea **dos servicios** (API y Web) con ruta de compilación `/apps/api` y `/apps/web`, o migra a un proyecto **Docker Compose** en EasyPanel.
 
 ## 3) Orden de arranque y migraciones
 

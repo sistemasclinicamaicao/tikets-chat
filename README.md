@@ -12,6 +12,13 @@ Monorepo: API NestJS (Prisma + PostgreSQL) y aplicación web React (Vite).
 
 Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md).
 
+## EasyPanel (desde GitHub)
+
+1. En GitHub: repo `sistemasclinicamaicao/tikets-chat`, rama `main`.
+2. En EasyPanel: proyecto **Docker Compose** (recomendado), repositorio conectado y **archivo compose** `docker-compose.yml` en la **raíz** del clon.
+3. Variables de entorno: copia [`.env.easypanel.example`](.env.easypanel.example) y define al menos `VITE_API_ORIGIN` (URL HTTPS pública del API para el navegador), JWT, PostgreSQL, Redis y MinIO. Detalle: [DEPLOY_EASYPANEL.md](DEPLOY_EASYPANEL.md).
+4. En la pestaña **Fuente → Github**, **Ruta de compilación** `/` si el despliegue usa el compose de la raíz; si el panel construye **solo** una imagen por Dockerfile, usa `/apps/api` o `/apps/web` según el servicio.
+
 ## Requisitos
 
 - Node.js 18+ (recomendado LTS)
