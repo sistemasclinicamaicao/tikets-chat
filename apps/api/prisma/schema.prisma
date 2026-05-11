@@ -1,0 +1,456 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String               @id @default(cuid())
+  employeeId       String               @unique @map("employee_id")
+  name             String
+  firstName        String?              @map("first_name")
+  lastName         String?              @map("last_name")
+  phone            String?
+  email            String?
+  jobTitle         String?              @map("job_title")
+  dependencyName   String?              @map("dependency_name")
+  laborType        String?              @map("labor_type")
+  globalRole       String?              @map("global_role")
+  isActive         Boolean              @default(true) @map("is_active")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  otpRequests      OtpRequest[]
+  refreshTokens    RefreshToken[]
+  departmentRoles  UserDepartmentRole[]
+  ticketsRequested Ticket[]             @relation("RequesterTickets")
+  ticketsAssigned  Ticket[]             @relation("TicketAssignee")
+  ticketsSupervised Ticket[]            @relation("TicketSupervisor")
+  ticketEvents     TicketEvent[]
+  ticketComments   TicketComment[]
+  chatMessages     ChatMessage[]
+  ticketAssignmentsMade TicketAssignment[] @relation("AssignmentBy")
+  ticketAssignmentsReceived TicketAssignment[] @relation("AssignmentTo")
+  hojaDeVidaSynced HojaDeVida[] @relation("HojaDeVidaSyncedBy")
+
+  @@map("users")
+}
+
+model UserDepartmentRole {
+  id           String     @id @default(uuid())
+  userId       String     @map("user_id")
+  departmentId String     @map("department_id")
+  role         String
+  createdAt    DateTime   @default(now()) @map("created_at")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@map("user_department_roles")
+}
+
+model OtpRequest {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  otpHash    String    @map("otp_hash")
+  attempts   Int       @default(0)
+  isVerified Boolean   @default(false) @map("is_verified")
+  expiresAt  DateTime  @map("expires_at")
+  verifiedAt DateTime? @map("verified_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otp_requests")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  deviceId  String?   @map("device_id")
+  isRevoked Boolean   @default(false) @map("is_revoked")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Department {
+  id                         String               @id @default(cuid())
+  name                       String
+  description                String?
+  /// Ejemplo visible para usuarios, p. ej. SYSTEM0000 (área Sistemas / equipos).
+  assetInventoryCodeExample  String?              @map("asset_inventory_code_example")
+  /// Expresión regular validada contra `Asset.serialNumber` al vincular activos a tickets.
+  assetInventoryCodePattern  String?              @map("asset_inventory_code_pattern")
+  isActive                   Boolean              @map("is_active")
+  createdAt                  DateTime             @map("created_at")
+  updatedAt                  DateTime             @map("updated_at")
+  tickets        Ticket[]
+  channels       ChatChannel[]
+  userRoles      UserDepartmentRole[]
+  assets         Asset[]
+  workflows      WorkflowDefinition[]
+  templates      Template[]
+  inventoryDependencies InventoryDependency[]
+  hojaDeVidaRows      HojaDeVida[]
+
+  @@map("departments")
+}
+
+/// Copia local de la hoja de vida PC importada desde la integración API (tabla `hoja_de_vida`), por departamento.
+model HojaDeVida {
+  id               String     @id @default(cuid())
+  departmentId     String     @map("department_id")
+  externalRowKey   String     @map("external_row_key")
+  externalIdPc     Int?       @map("external_id_pc")
+  payload          Json       @map("payload")
+  integrationName  String?    @map("integration_name")
+  syncedAt         DateTime   @default(now()) @map("synced_at")
+  syncedByUserId   String?    @map("synced_by_user_id")
+  department       Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  syncedBy         User?      @relation("HojaDeVidaSyncedBy", fields: [syncedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([departmentId, externalRowKey])
+  @@index([departmentId, externalIdPc])
+  @@map("hoja_de_vida")
+}
+
+/// Catálogo operativo (dependencia / unidad) importado del legado MySQL, por departamento de inventario.
+model InventoryDependency {
+  id           String     @id @default(uuid())
+  departmentId String     @map("department_id")
+  legacyId     Int        @map("legacy_id")
+  name         String
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, legacyId])
+  @@map("inventory_dependencies")
+}
+
+model TicketStatus {
+  id                String               @id @default(uuid())
+  code              String               @unique
+  name              String
+  category          String               @default("activo")
+  isClosed          Boolean              @default(false) @map("is_closed")
+  isDefault         Boolean              @default(false) @map("is_default")
+  sortOrder         Int                  @default(0) @map("sort_order")
+  tickets           Ticket[]
+  transitionsFrom   WorkflowTransition[] @relation("TransitionFrom")
+  transitionsTo     WorkflowTransition[] @relation("TransitionTo")
+
+  @@map("ticket_statuses")
+}
+
+model TicketPriority {
+  id                String   @id @default(uuid())
+  code              String   @unique
+  name              String
+  responseMinutes   Int?     @map("response_minutes")
+  resolutionMinutes Int?     @map("resolution_minutes")
+  tickets           Ticket[]
+
+  @@map("ticket_priorities")
+}
+
+model WorkflowDefinition {
+  id           String               @id @default(uuid())
+  departmentId String               @map("department_id")
+  name         String
+  isActive     Boolean              @default(true) @map("is_active")
+  department   Department           @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  transitions  WorkflowTransition[]
+
+  @@map("workflow_definitions")
+}
+
+model WorkflowTransition {
+  id                         String             @id @default(uuid())
+  workflowId                 String             @map("workflow_id")
+  fromStatusId               String             @map("from_status_id")
+  toStatusId                 String             @map("to_status_id")
+  requiresComment            Boolean            @default(false) @map("requires_comment")
+  requiresResolution         Boolean            @default(false) @map("requires_resolution")
+  requiresChecklist          Boolean            @default(false) @map("requires_checklist")
+  requiresSupervisorApproval Boolean            @default(false) @map("requires_supervisor_approval")
+  workflow                   WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  fromStatus                 TicketStatus       @relation("TransitionFrom", fields: [fromStatusId], references: [id])
+  toStatus                   TicketStatus       @relation("TransitionTo", fields: [toStatusId], references: [id])
+
+  @@map("workflow_transitions")
+}
+
+model Template {
+  id           String          @id @default(uuid())
+  departmentId String          @map("department_id")
+  name         String
+  usageType    String          @map("usage_type")
+  isActive     Boolean         @default(true) @map("is_active")
+  department   Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  fields       TemplateField[]
+  tickets      Ticket[]
+
+  @@map("templates")
+}
+
+model TemplateField {
+  id          String            @id @default(uuid())
+  templateId  String            @map("template_id")
+  fieldKey    String            @map("field_key")
+  fieldLabel  String            @map("field_label")
+  fieldType   String            @map("field_type")
+  isRequired  Boolean           @default(false) @map("is_required")
+  configJson  Json              @default("{}") @map("config_json")
+  template    Template          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  formValues  TicketFormValue[]
+
+  @@map("template_fields")
+}
+
+enum EquipmentCategory {
+  pc
+  printer
+  network
+  other
+
+  @@map("equipment_category")
+}
+
+model Asset {
+  id                  String             @id @default(uuid())
+  departmentId        String             @map("department_id")
+  equipmentCategory   EquipmentCategory  @default(pc) @map("equipment_category")
+  name                String
+  serialNumber        String?            @map("serial_number")
+  manufacturerSerial  String?            @map("manufacturer_serial")
+  /// Payload por categoría (PC: IP, dependencia, RAM, etc.).
+  detailsJson         Json               @default("{}") @map("details_json")
+  qrCode              String?            @map("qr_code")
+  isActive            Boolean            @default(true) @map("is_active")
+  /// Objeto en MinIO/S3 para foto del equipo (vía StorageService).
+  photoStorageKey     String?            @map("photo_storage_key")
+  /// Id fila `pc.id_pc` del sistema legado (importación idempotente).
+  legacyMysqlId       Int?               @map("legacy_mysql_id")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  department          Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  tickets             Ticket[]
+  lifecycle           AssetLifecycleEntry[]
+
+  @@unique([departmentId, legacyMysqlId])
+  @@index([departmentId, equipmentCategory])
+  @@index([departmentId, isActive])
+  @@map("assets")
+}
+
+model Attachment {
+  id                 String             @id @default(uuid())
+  storageKey         String             @map("storage_key")
+  originalName       String             @map("original_name")
+  mimeType           String             @map("mime_type")
+  sizeBytes          Int                @map("size_bytes")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  ticketAttachments  TicketAttachment[]
+
+  @@map("attachments")
+}
+
+model Ticket {
+  id                   String              @id @default(uuid())
+  ticketNumber         BigInt              @unique @default(autoincrement()) @map("ticket_number")
+  departmentId         String              @map("department_id")
+  templateId           String?             @map("template_id")
+  requesterId          String              @map("requester_id")
+  assignedTo           String?             @map("assigned_to")
+  supervisorId         String?             @map("supervisor_id")
+  assetId              String?             @map("asset_id")
+  statusId             String              @map("status_id")
+  priorityId           String              @map("priority_id")
+  subject              String              @db.VarChar(200)
+  description          String?
+  channel              String              @default("web")
+  classificationSource String              @default("manual") @map("classification_source")
+  reportedAt           DateTime            @default(now()) @map("reported_at")
+  assignedAt           DateTime?           @map("assigned_at")
+  firstResponseAt      DateTime?           @map("first_response_at")
+  resolvedAt           DateTime?           @map("resolved_at")
+  closedAt             DateTime?           @map("closed_at")
+  slaDueAt             DateTime?           @map("sla_due_at")
+  slaBreach            Boolean             @default(false) @map("sla_breach")
+  closureSummary       String?             @map("closure_summary")
+  customDataJson       Json                @default("{}") @map("custom_data_json")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  department  Department         @relation(fields: [departmentId], references: [id])
+  template    Template?          @relation(fields: [templateId], references: [id])
+  requester   User               @relation("RequesterTickets", fields: [requesterId], references: [id])
+  assignee    User?              @relation("TicketAssignee", fields: [assignedTo], references: [id])
+  supervisor  User?              @relation("TicketSupervisor", fields: [supervisorId], references: [id])
+  asset       Asset?             @relation(fields: [assetId], references: [id])
+  status      TicketStatus       @relation(fields: [statusId], references: [id])
+  priority    TicketPriority     @relation(fields: [priorityId], references: [id])
+  events      TicketEvent[]
+  comments    TicketComment[]
+  attachments TicketAttachment[]
+  formValues  TicketFormValue[]
+  assignments TicketAssignment[]
+  chatChannel ChatChannel?
+
+  @@map("tickets")
+}
+
+model TicketEvent {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  eventType    String   @map("event_type")
+  actorUserId  String?  @map("actor_user_id")
+  oldValueJson Json     @default("{}") @map("old_value_json")
+  newValueJson Json     @default("{}") @map("new_value_json")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor        User?    @relation(fields: [actorUserId], references: [id])
+
+  @@map("ticket_events")
+}
+
+model TicketComment {
+  id          String   @id @default(uuid())
+  ticketId    String   @map("ticket_id")
+  userId      String   @map("user_id")
+  commentType String   @default("public") @map("comment_type")
+  content     String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("ticket_comments")
+}
+
+model TicketAttachment {
+  id             String     @id @default(uuid())
+  ticketId       String     @map("ticket_id")
+  attachmentId   String     @map("attachment_id")
+  attachmentRole String     @default("general") @map("attachment_role")
+  createdBy      String?    @map("created_by")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  ticket         Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  attachment     Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_attachments")
+}
+
+model TicketFormValue {
+  id              String        @id @default(uuid())
+  ticketId        String        @map("ticket_id")
+  templateFieldId String        @map("template_field_id")
+  valueJson       Json          @map("value_json")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  templateField   TemplateField @relation(fields: [templateFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, templateFieldId])
+  @@map("ticket_form_values")
+}
+
+model TicketAssignment {
+  id             String    @id @default(uuid())
+  ticketId       String    @map("ticket_id")
+  assignedTo     String    @map("assigned_to")
+  assignedBy     String    @map("assigned_by")
+  assignmentType String    @default("manual") @map("assignment_type")
+  assignedAt     DateTime  @default(now()) @map("assigned_at")
+  releasedAt     DateTime? @map("released_at")
+  notes          String?
+  ticket         Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  assigneeUser   User      @relation("AssignmentTo", fields: [assignedTo], references: [id])
+  assignerUser   User      @relation("AssignmentBy", fields: [assignedBy], references: [id])
+
+  @@map("ticket_assignments")
+}
+
+model AssetLifecycleEntry {
+  id           String   @id @default(uuid())
+  assetId      String   @map("asset_id")
+  sourceType   String   @map("source_type")
+  sourceId     String   @map("source_id")
+  entryType    String   @map("entry_type")
+  summary      String
+  performedBy  String   @map("performed_by")
+  performedAt  DateTime @map("performed_at")
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@map("asset_lifecycle_entries")
+}
+
+model ChatChannel {
+  id           String       @id @default(cuid())
+  name         String?
+  channelType  String       @map("channel_type")
+  departmentId String?      @map("department_id")
+  ticketId     String?      @unique @map("ticket_id")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  ticket       Ticket?      @relation(fields: [ticketId], references: [id])
+  messages     ChatMessage[]
+
+  @@map("chat_channels")
+}
+
+model ChatMessage {
+  id          String            @id @default(cuid())
+  channelId   String            @map("channel_id")
+  userId      String            @map("user_id")
+  body        String?
+  messageType String            @default("text") @map("message_type")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  channel     ChatChannel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id])
+  attachments ChatAttachment[]
+
+  @@map("chat_messages")
+}
+
+model ChatAttachment {
+  id           String      @id @default(cuid())
+  messageId    String      @map("message_id")
+  storageKey   String      @map("storage_key")
+  originalName String      @map("original_name")
+  mimeType     String      @map("mime_type")
+  sizeBytes    Int         @map("size_bytes")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  message      ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("chat_attachments")
+}
+
+/// Credenciales cifradas en aplicación (INTEGRATIONS_ENCRYPTION_KEY). auth_type: none | bearer | api_key | basic
+model ExternalApiIntegration {
+  id                   String   @id @default(cuid())
+  name                 String
+  baseUrl              String   @map("base_url")
+  authType             String   @map("auth_type")
+  encryptedCredentials String   @map("encrypted_credentials")
+  notes                String?
+  isActive             Boolean  @default(true) @map("is_active")
+  /// Claves detectadas en el último probe JSON exitoso (array de objetos u objeto).
+  lastProbeFields      Json     @default("[]") @map("last_probe_fields")
+  /// { "campo": 0 | 1 }; ausente o distinto de 0 se trata como incluir (1).
+  responseFieldMask    Json     @default("{}") @map("response_field_mask")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("external_api_integrations")
+}

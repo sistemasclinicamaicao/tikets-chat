@@ -1,0 +1,42 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import * as path from 'path';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AuditModule } from './common/audit/audit.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { HealthController } from './health.controller';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { MailModule } from './modules/mail/mail.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SlaModule } from './modules/sla/sla.module';
+import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      /** Siempre `apps/api/.env` aunque el proceso se lance con cwd en la raíz del monorepo (p. ej. INTEGRATIONS_ENCRYPTION_KEY). */
+      envFilePath: path.join(__dirname, '..', '.env'),
+    }),
+    AuditModule,
+    AdminModule,
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    PrismaModule,
+    StorageModule,
+    NotificationsModule,
+    SlaModule,
+    LifecycleModule,
+    AuthModule,
+    MailModule,
+    TicketsModule,
+    ChatModule,
+    InventoryModule,
+  ],
+  controllers: [HealthController],
+})
+export class AppModule {}

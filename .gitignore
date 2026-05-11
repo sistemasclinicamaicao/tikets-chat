@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+.vite/
+**/.vite/
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+apps/*/.env
+!apps/api/.env.example
+!apps/web/.env.example
+
+# Local backups and logs
+backups/
+*.log
+debug-*.log
+
+# Test / tooling caches
+coverage/
+.nyc_output/
+.turbo/
+*.tsbuildinfo
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+
+# Cursor / local MCP descriptors (optional local tooling)
+.cursor/
+mcps/
