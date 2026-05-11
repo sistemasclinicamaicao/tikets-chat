@@ -52,3 +52,15 @@ https://github.com/sistemasclinicamaicao/tikets-chat.git
 ```
 
 Tras clonar: repetir pasos de configuración e instalación en `apps/api` y `apps/web`.
+
+### Primer push (mantenedor)
+
+Crea el repositorio vacío en GitHub (sin README si ya tienes uno local), autentícate (PAT, SSH o `gh auth login`) y ejecuta:
+
+```bash
+git remote add origin https://github.com/sistemasclinicamaicao/tikets-chat.git
+git branch -M main
+git push -u origin main
+```
+
+Si `remote origin` ya existe: `git push -u origin main` basta. Si GitHub responde `Repository not found`, revisa permisos, nombre del repo o que el remoto exista en la organización.
