@@ -24,7 +24,7 @@ En EasyPanel, configura el proyecto tipo **Docker Compose** apuntando al archivo
 | Rama | `main` |
 | Ruta de compilación | `/` (raíz; el compose y los Dockerfiles referenciados están bajo `apps/`) |
 
-Si el panel solo permite **un Dockerfile** en la raíz y no Compose, crea **dos servicios** (API y Web) con ruta de compilación `/apps/api` y `/apps/web`, o migra a un proyecto **Docker Compose** en EasyPanel.
+Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Dockerfile`](Dockerfile) en la **raíz** que construye el **API** (mismo resultado que `apps/api/Dockerfile`). Para el front, otro servicio con ruta `/apps/web` o, mejor, proyecto **Docker Compose** con [`docker-compose.yml`](docker-compose.yml).
 
 ## 3) Orden de arranque y migraciones
 

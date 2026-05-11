@@ -1,0 +1,11 @@
+.git
+.cursor
+mcps
+backups
+**/node_modules
+**/dist
+*.log
+debug-*.log
+.env
+apps/web/node_modules
+apps/api/node_modules
