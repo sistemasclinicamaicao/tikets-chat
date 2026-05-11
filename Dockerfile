@@ -4,7 +4,8 @@ FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
 COPY apps/api/package*.json ./
-RUN npm ci
+# ts-jest pide typescript<6; el proyecto usa TS 6 — npm ci falla sin legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 
 COPY apps/api/ ./
 RUN npm run prisma:generate && npm run build
