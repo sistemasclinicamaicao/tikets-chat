@@ -29,6 +29,11 @@ async function bootstrap() {
     }),
   );
 
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.get('/favicon.ico', (_req, res) => {
+    res.sendStatus(204);
+  });
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Chat Tickets API')
     .setDescription('API empresarial: tickets, chat, autenticación')
