@@ -55,6 +55,38 @@ function playFallbackIncomingChime(): void {
   }
 }
 
+/** Tono tipo “vibración” de zumbido (MSN / Messenger clásico). Respeta `chat_sound_enabled`. */
+export function playChatNudgeBuzz(): void {
+  if (typeof window === 'undefined' || !isChatSoundEnabled()) return;
+  const Ctor =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return;
+  try {
+    const ctx = new Ctor();
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.14;
+    gain.connect(ctx.destination);
+    const pulses = [0, 0.14, 0.28, 0.42];
+    pulses.forEach((t0) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = 180;
+      osc.connect(gain);
+      const start = now + t0;
+      osc.start(start);
+      osc.stop(start + 0.09);
+    });
+    void ctx.resume().catch(() => undefined);
+    window.setTimeout(() => {
+      void ctx.close().catch(() => undefined);
+    }, 900);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Reproduce tono de mensaje entrante (archivo opcional o fallback Web Audio). Respeta `chat_sound_enabled`. */
 export function playChatIncomingSound(): void {
   if (typeof window === 'undefined') return;

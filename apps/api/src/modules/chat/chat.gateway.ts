@@ -25,6 +25,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(ChatGateway.name);
   private readonly typingLast = new Map<string, number>();
+  /** Anti-spam zumbidos: clave `userId:channelId` → último envío (ms). */
+  private readonly nudgeLast = new Map<string, number>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -155,15 +157,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('chat:send')
   async onSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { channel_id: string; body: string },
+    @MessageBody() body: { channel_id: string; body: string; message_type?: string },
   ) {
     const userId = client.data.userId as string | undefined;
-    if (!userId || !body?.channel_id || !body?.body?.trim()) {
-      return;
+    if (!userId || !body?.channel_id) {
+      return { ok: false as const, error: 'invalid' as const };
+    }
+
+    if (body.message_type === 'nudge') {
+      const key = `${userId}:${body.channel_id}`;
+      const now = Date.now();
+      if ((this.nudgeLast.get(key) ?? 0) > now - 15_000) {
+        return { ok: false as const, error: 'rate_limited' as const };
+      }
+      try {
+        await this.chatService.ensureUserInChannelOrThrow(userId, body.channel_id);
+      } catch {
+        return { ok: false as const, error: 'forbidden' as const };
+      }
+      this.nudgeLast.set(key, now);
+      const message = await this.chatService.sendMessage(body.channel_id, userId, '', { messageType: 'nudge' });
+      this.broadcastChannelMessage(body.channel_id, message);
+      return { ok: true as const };
+    }
+
+    if (!body?.body?.trim()) {
+      return { ok: false as const, error: 'invalid' as const };
     }
 
     const message = await this.chatService.sendMessage(body.channel_id, userId, body.body.trim());
     this.broadcastChannelMessage(body.channel_id, message);
-    return { ok: true };
+    return { ok: true as const };
   }
 }

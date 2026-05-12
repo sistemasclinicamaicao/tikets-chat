@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -120,7 +121,16 @@ export class ChatController {
     @Body() dto: SendMessageDto,
     @CurrentUser() user: { userId: string },
   ) {
-    const message = await this.chatService.sendMessage(channelId, user.userId, dto.body);
+    if (dto.message_type === 'nudge') {
+      const message = await this.chatService.sendMessage(channelId, user.userId, '', { messageType: 'nudge' });
+      this.chatGateway.broadcastChannelMessage(channelId, message);
+      return message;
+    }
+    const trimmed = (dto.body ?? '').trim();
+    if (!trimmed) {
+      throw new BadRequestException('Message body required');
+    }
+    const message = await this.chatService.sendMessage(channelId, user.userId, trimmed);
     this.chatGateway.broadcastChannelMessage(channelId, message);
     return message;
   }

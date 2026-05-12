@@ -802,6 +802,54 @@ button.dashboard-header__avatar:focus-visible {
   max-height: 100%;
   overflow: hidden;
 }
+
+@keyframes chat-nudge-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  8% {
+    transform: translate3d(-7px, 2px, 0);
+  }
+  16% {
+    transform: translate3d(7px, -2px, 0);
+  }
+  24% {
+    transform: translate3d(-6px, -1px, 0);
+  }
+  32% {
+    transform: translate3d(6px, 2px, 0);
+  }
+  40% {
+    transform: translate3d(-5px, 1px, 0);
+  }
+  48% {
+    transform: translate3d(5px, -1px, 0);
+  }
+  56% {
+    transform: translate3d(-4px, 0, 0);
+  }
+  64% {
+    transform: translate3d(4px, 1px, 0);
+  }
+  72% {
+    transform: translate3d(-3px, -1px, 0);
+  }
+  80% {
+    transform: translate3d(3px, 0, 0);
+  }
+  88% {
+    transform: translate3d(-2px, 0, 0);
+  }
+  96% {
+    transform: translate3d(1px, 0, 0);
+  }
+}
+
+.chat-panel--thread.chat-panel--nudge-shake {
+  animation: chat-nudge-shake 0.85s ease-in-out;
+  will-change: transform;
+}
 .chat-panel--people {
   grid-area: people;
   min-width: 0;
@@ -998,6 +1046,19 @@ button.dashboard-header__avatar:focus-visible {
   text-transform: uppercase;
   color: var(--ui-muted, #536377);
   background: rgba(83, 99, 119, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.chat-channel-muted-pill {
+  margin-left: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.2);
   border-radius: 4px;
   padding: 1px 5px;
   vertical-align: middle;
@@ -1410,6 +1471,10 @@ button.chat-channel-person-result:focus-visible:not(:disabled) {
   background: var(--chat-active-tint, rgba(56, 89, 120, 0.14));
   color: var(--chat-primary-hover, #2c4760);
 }
+.chat-pill--muted {
+  background: rgba(245, 158, 11, 0.22);
+  color: #92400e;
+}
 .chat-group-manage {
   margin-top: 10px;
   padding-top: 10px;
@@ -1663,6 +1728,14 @@ button.chat-channel-person-result:focus-visible:not(:disabled) {
   color: var(--chat-faint, #94a3b8);
   font-weight: 500;
 }
+.chat-bubble__nudge {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--chat-primary, #385978);
+}
 .chat-bubble__body {
   margin: 0;
   font-size: 0.875rem;
@@ -1684,6 +1757,13 @@ button.chat-channel-person-result:focus-visible:not(:disabled) {
   padding: 14px 16px;
   border-top: 1px solid var(--chat-line, rgba(51, 65, 85, 0.1));
   background: linear-gradient(180deg, #fefefe 0%, #f8fbfe 100%);
+}
+.chat-composer-hint {
+  flex-basis: 100%;
+  margin: -2px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #b45309;
 }
 .chat-composer__grow {
   flex: 1;
@@ -1715,6 +1795,54 @@ button.chat-channel-person-result:focus-visible:not(:disabled) {
   border-color: rgba(27, 79, 123, 0.36);
   background: #eef5fc;
   color: var(--chat-primary, #385978);
+}
+.chat-composer-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+}
+.chat-composer-icon-btn__svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+}
+.chat-emoji-anchor {
+  position: relative;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+.chat-emoji-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  max-width: min(100vw - 32px, 380px);
+  /* El picker por defecto usa ~450px de alto; un max-height menor recorta búsqueda/categorías */
+  max-height: min(85vh, 520px);
+  overflow: visible;
+  border-radius: 14px;
+  border: 1px solid var(--chat-line, rgba(51, 65, 85, 0.14));
+  background: var(--chat-surface, #fff);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+}
+@media (max-height: 560px) {
+  .chat-emoji-popover {
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+  }
+}
+.chat-emoji-popover__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 280px;
+  min-height: 320px;
+  font-size: 0.85rem;
+  color: var(--chat-muted, #64748b);
+  background: var(--chat-surface-soft, #f7f9fc);
 }
 .chat-pending-file {
   flex-basis: 100%;

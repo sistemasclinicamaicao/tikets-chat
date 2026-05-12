@@ -419,15 +419,16 @@ export class ChatService {
 
   /** Último mensaje visible para este usuario (respeta history_cleared_before_at del miembro). */
   private async lastMessagesForViewer(userId: string, channelIds: string[]) {
-    const map = new Map<string, { body: string | null; createdAt: Date; authorName: string }>();
+    const map = new Map<string, { body: string | null; messageType: string; createdAt: Date; authorName: string }>();
     if (channelIds.length === 0) return map;
 
     const rows = await this.prisma.$queryRaw<
-      { channel_id: string; body: string | null; created_at: Date; author_name: string }[]
+      { channel_id: string; body: string | null; message_type: string; created_at: Date; author_name: string }[]
     >(Prisma.sql`
       SELECT DISTINCT ON (m.channel_id)
         m.channel_id,
         m.body,
+        m.message_type AS message_type,
         m.created_at,
         u.name AS author_name
       FROM chat_messages m
@@ -442,6 +443,7 @@ export class ChatService {
     for (const row of rows) {
       map.set(row.channel_id, {
         body: row.body,
+        messageType: row.message_type,
         createdAt: row.created_at,
         authorName: row.author_name,
       });
@@ -548,6 +550,7 @@ export class ChatService {
         last_message: last
           ? {
               body: last.body,
+              message_type: last.messageType,
               created_at: last.createdAt.toISOString(),
               author_name: last.authorName,
             }
@@ -751,14 +754,40 @@ export class ChatService {
     return { messages, has_more: idsDesc.length === limit };
   }
 
-  async sendMessage(channelId: string, userId: string, body: string) {
+  async sendMessage(
+    channelId: string,
+    userId: string,
+    body: string,
+    opts?: { messageType?: 'text' | 'nudge' },
+  ) {
     await this.ensureUserInChannelOrThrow(userId, channelId);
+
+    const messageType = opts?.messageType === 'nudge' ? 'nudge' : 'text';
+    const trimmed = (body ?? '').trim();
+
+    if (messageType === 'nudge') {
+      const message = await this.prisma.chatMessage.create({
+        data: {
+          channelId,
+          userId,
+          body: null,
+          messageType: 'nudge',
+        },
+        include: this.messageInclude(),
+      });
+      return message;
+    }
+
+    if (!trimmed) {
+      throw new BadRequestException('Message body required');
+    }
 
     const message = await this.prisma.chatMessage.create({
       data: {
         channelId,
         userId,
-        body,
+        body: trimmed,
+        messageType: 'text',
       },
       include: this.messageInclude(),
     });

@@ -297,6 +297,7 @@ type ChatChannel = {
   updated_at: string;
   last_message: {
     body: string | null;
+    message_type?: string;
     created_at: string;
     author_name: string;
   } | null;
@@ -318,6 +319,7 @@ export type ChatAttachment = {
 export type ChatMessage = {
   id: string;
   body: string | null;
+  messageType?: string;
   createdAt: string;
   user: { id: string; name: string; employeeId: string };
   attachments: ChatAttachment[];
@@ -646,8 +648,13 @@ export function getChannelMessages(channelId: string, opts?: { limit?: number; b
   return request<MessagesPage>(`/chat/channels/${channelId}/messages${qs ? `?${qs}` : ''}`, 'GET');
 }
 
-export function sendChannelMessage(channelId: string, body: string) {
-  return request<ChatMessage>(`/chat/channels/${channelId}/messages`, 'POST', { body });
+export function sendChannelMessage(channelId: string, body: string, opts?: { messageType?: 'nudge' }) {
+  const payload: { body: string; message_type?: 'nudge' } = { body };
+  if (opts?.messageType === 'nudge') {
+    payload.message_type = 'nudge';
+    payload.body = '';
+  }
+  return request<ChatMessage>(`/chat/channels/${channelId}/messages`, 'POST', payload);
 }
 
 export async function sendChannelMessageWithFile(channelId: string, body: string, file: File) {

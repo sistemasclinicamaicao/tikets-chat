@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -25,9 +25,13 @@ import {
   notifyDesktopIfBackground,
   persistChatSoundEnabled,
   playChatIncomingSound,
+  playChatNudgeBuzz,
   requestDesktopNotificationPermission,
 } from '../lib/chatMessageAlerts';
 import type { ChatMessage, GroupMember } from '../lib/api';
+import type { EmojiClickData, Theme } from 'emoji-picker-react';
+
+const LazyEmojiPicker = lazy(() => import('emoji-picker-react'));
 
 const MESSAGES_PAGE_SIZE = 50;
 
@@ -131,7 +135,8 @@ function previewText(body: string | null, author: string) {
   return `${who}: ${short}`;
 }
 
-function lastMessagePreview(msg: Pick<Message, 'body' | 'attachments'>) {
+function lastMessagePreview(msg: Pick<Message, 'body' | 'attachments' | 'messageType'>) {
+  if (msg.messageType === 'nudge') return '🔔 Zumbido';
   const body = (msg.body ?? '').trim();
   const atts = msg.attachments ?? [];
   if (atts.length > 0) {
@@ -146,10 +151,12 @@ type ChannelListRowProps = {
   channel: Channel;
   isActive: boolean;
   isArchived: boolean;
+  isMuted: boolean;
   onSelect: () => void;
   onMarkRead: (channelId: string) => void;
   onSync: (channelId: string) => void;
   onToggleArchive: (channelId: string, nextArchived: boolean) => void;
+  onToggleMute: (channelId: string, nextMuted: boolean) => void;
   onSoftDelete: (channelId: string) => void;
   onLeaveGroup: (channelId: string) => void;
 };
@@ -158,10 +165,12 @@ function ChannelListRow({
   channel,
   isActive,
   isArchived,
+  isMuted,
   onSelect,
   onMarkRead,
   onSync,
   onToggleArchive,
+  onToggleMute,
   onSoftDelete,
   onLeaveGroup,
 }: ChannelListRowProps) {
@@ -197,6 +206,11 @@ function ChannelListRow({
                 Archivado
               </span>
             ) : null}
+            {isMuted ? (
+              <span className="chat-channel-muted-pill" title="Sin sonido, toasts ni notificaciones de escritorio para este chat">
+                Silenciada
+              </span>
+            ) : null}
             {channel.channel_type === 'group' && channel.my_role === 'admin' ? (
               <span className="chat-group-admin-badge" title="Administrador del grupo">
                 Admin
@@ -212,7 +226,12 @@ function ChannelListRow({
         <div className="chat-channel-row__bottom">
           <span className="chat-channel-row__preview">
             {channel.last_message
-              ? previewText(channel.last_message.body, channel.last_message.author_name)
+              ? previewText(
+                  channel.last_message.message_type === 'nudge'
+                    ? '🔔 Zumbido'
+                    : channel.last_message.body,
+                  channel.last_message.author_name,
+                )
               : 'Sin mensajes'}
           </span>
           {channel.unread_count > 0 ? <span className="chat-unread">{channel.unread_count}</span> : null}
@@ -278,6 +297,20 @@ function ChannelListRow({
               }}
             >
               {isArchived ? 'Desarchivar conversación' : 'Archivar conversación'}
+            </button>
+          </li>
+          <li role="none">
+            <button
+              type="button"
+              className="chat-channel-menu__item"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeMenu();
+                onToggleMute(channel.id, !isMuted);
+              }}
+            >
+              {isMuted ? 'Activar alertas de esta conversación' : 'Silenciar esta conversación'}
             </button>
           </li>
           <li role="none">
@@ -355,6 +388,7 @@ export function ChatPage() {
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
+  const [composerHint, setComposerHint] = useState('');
   const [wsState, setWsState] = useState<'connecting' | 'live' | 'offline'>('offline');
   const [refreshing, setRefreshing] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -364,10 +398,13 @@ export function ChatPage() {
   const [inviteUserId, setInviteUserId] = useState('');
   const [inviteQuery, setInviteQuery] = useState('');
   const [archivedChannelIds, setArchivedChannelIds] = useState<string[]>([]);
+  const [mutedChannelIds, setMutedChannelIds] = useState<string[]>([]);
+  const mutedChannelIdsRef = useRef<string[]>([]);
   /** Instancia Socket.IO (también en `socketRef` para handlers sin dependencias obsoletas). */
   const [socket, setSocket] = useState<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const threadPanelRef = useRef<HTMLDivElement>(null);
   const typingClearTimerRef = useRef(0);
   const stickToBottomRef = useRef(true);
   const groupMembersDialogRef = useRef<HTMLDialogElement>(null);
@@ -379,6 +416,12 @@ export function ChatPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerSelStartRef = useRef(0);
+  const composerSelEndRef = useRef(0);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const emojiPopoverRef = useRef<HTMLDivElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const typingLastEmitRef = useRef(0);
   const messagesRef = useRef<Message[]>([]);
   const loadingOlderRef = useRef(false);
@@ -425,6 +468,31 @@ export function ChatPage() {
       /* ignore */
     }
   }, [archivedChannelIds]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('chat_muted_channel_ids');
+      if (!raw) return;
+      const ids = JSON.parse(raw);
+      if (!Array.isArray(ids)) return;
+      const safe = ids.filter((v): v is string => typeof v === 'string');
+      setMutedChannelIds(safe);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('chat_muted_channel_ids', JSON.stringify(mutedChannelIds));
+    } catch {
+      /* ignore */
+    }
+  }, [mutedChannelIds]);
+
+  useEffect(() => {
+    mutedChannelIdsRef.current = mutedChannelIds;
+  }, [mutedChannelIds]);
 
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
@@ -533,7 +601,9 @@ export function ChatPage() {
   }
 
   function normalizeMessage(m: Message): Message {
-    return { ...m, attachments: m.attachments ?? [] };
+    const raw = m as unknown as { message_type?: string };
+    const messageType = m.messageType ?? raw.message_type ?? 'text';
+    return { ...m, attachments: m.attachments ?? [], messageType };
   }
 
   async function loadOlderMessages() {
@@ -594,6 +664,68 @@ export function ChatPage() {
     const ch = activeChannelIdRef.current;
     if (!ch || !socketRef.current?.connected) return;
     socketRef.current.emit('chat:typing', { channel_id: ch, typing });
+  }
+
+  function triggerThreadNudgeShake() {
+    const el = threadPanelRef.current;
+    if (!el) return;
+    el.classList.remove('chat-panel--nudge-shake');
+    void el.offsetWidth;
+    el.classList.add('chat-panel--nudge-shake');
+    window.setTimeout(() => {
+      el.classList.remove('chat-panel--nudge-shake');
+    }, 900);
+  }
+
+  function sendNudge() {
+    const ch = activeChannelIdRef.current;
+    if (!ch) return;
+    setComposerHint('');
+    if (socketRef.current?.connected) {
+      socketRef.current.emit(
+        'chat:send',
+        { channel_id: ch, body: '', message_type: 'nudge' },
+        (ack: { ok?: boolean; error?: string } | undefined) => {
+          if (ack?.ok === false && ack?.error === 'rate_limited') {
+            setComposerHint('Espera unos segundos entre zumbidos.');
+            window.setTimeout(() => setComposerHint(''), 4000);
+          }
+        },
+      );
+    } else {
+      void (async () => {
+        try {
+          const msg = normalizeMessage(await sendChannelMessage(ch, '', { messageType: 'nudge' }));
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+          await markChannelRead(ch);
+          setChannels((prev) =>
+            sortChannelsByActivity(
+              prev.map((row) =>
+                row.id === ch
+                  ? {
+                      ...row,
+                      last_message: {
+                        body: msg.body ?? '',
+                        message_type: msg.messageType ?? 'nudge',
+                        created_at: msg.createdAt,
+                        author_name: msg.user.name,
+                      },
+                      updated_at: msg.createdAt,
+                      unread_count: 0,
+                    }
+                  : row,
+              ),
+            ),
+          );
+        } catch {
+          setComposerHint('No se pudo enviar el zumbido.');
+          window.setTimeout(() => setComposerHint(''), 4000);
+        }
+      })();
+    }
   }
 
   async function refreshAll() {
@@ -664,7 +796,8 @@ export function ChatPage() {
             return {
               ...ch,
               last_message: {
-                body: lastMessagePreview(msg),
+                body: msg.body ?? '',
+                message_type: msg.messageType ?? 'text',
                 created_at: msg.createdAt,
                 author_name: msg.user.name,
               },
@@ -677,20 +810,47 @@ export function ChatPage() {
 
       const me = localStorage.getItem('user_id') ?? '';
       if (msg.user.id !== me) {
-        playChatIncomingSound();
-        const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
-        const title = formatDisplayName(chRow?.name) || 'Chat';
-        const bodyText = lastMessagePreview(msg);
-        if (payload.channel_id !== active) {
-          setMessageToasts((prev) => {
-            if (prev.some((t) => t.id === msg.id)) return prev;
-            window.setTimeout(() => {
-              setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
-            }, 6000);
-            return [...prev, { id: msg.id, channelId: payload.channel_id, title, body: bodyText }];
-          });
+        const channelMuted = mutedChannelIdsRef.current.includes(payload.channel_id);
+        const isNudge = msg.messageType === 'nudge';
+
+        if (isNudge) {
+          if (!channelMuted) {
+            playChatNudgeBuzz();
+            if (payload.channel_id === active) {
+              triggerThreadNudgeShake();
+            }
+            if (!channelMuted && payload.channel_id !== active) {
+              const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
+              const title = formatDisplayName(chRow?.name) || 'Chat';
+              setMessageToasts((prev) => {
+                if (prev.some((t) => t.id === msg.id)) return prev;
+                window.setTimeout(() => {
+                  setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
+                }, 6000);
+                return [...prev, { id: msg.id, channelId: payload.channel_id, title, body: '🔔 Zumbido' }];
+              });
+            }
+          }
+        } else {
+          if (!channelMuted) {
+            playChatIncomingSound();
+          }
+          const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
+          const title = formatDisplayName(chRow?.name) || 'Chat';
+          const bodyText = lastMessagePreview(msg);
+          if (!channelMuted && payload.channel_id !== active) {
+            setMessageToasts((prev) => {
+              if (prev.some((t) => t.id === msg.id)) return prev;
+              window.setTimeout(() => {
+                setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
+              }, 6000);
+              return [...prev, { id: msg.id, channelId: payload.channel_id, title, body: bodyText }];
+            });
+          }
+          if (!channelMuted) {
+            notifyDesktopIfBackground(title, bodyText);
+          }
         }
-        notifyDesktopIfBackground(title, bodyText);
       }
     }
 
@@ -815,6 +975,32 @@ export function ChatPage() {
     groupMembersDialogRef.current?.close();
   }, [activeChannelId]);
 
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      const pop = emojiPopoverRef.current;
+      const btn = emojiButtonRef.current;
+      const t = e.target;
+      if (t instanceof Node && pop?.contains(t)) return;
+      if (t instanceof Node && btn?.contains(t)) return;
+      setEmojiPickerOpen(false);
+    }
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [emojiPickerOpen]);
+
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setEmojiPickerOpen(false);
+      composerTextareaRef.current?.focus();
+    }
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [emojiPickerOpen]);
+
   async function onSend(event?: FormEvent) {
     event?.preventDefault();
     if (!activeChannelId) return;
@@ -836,7 +1022,8 @@ export function ChatPage() {
               ? {
                   ...ch,
                   last_message: {
-                    body: lastMessagePreview(msg),
+                    body: msg.body ?? '',
+                    message_type: msg.messageType ?? 'text',
                     created_at: msg.createdAt,
                     author_name: msg.user.name,
                   },
@@ -869,6 +1056,35 @@ export function ChatPage() {
     setText('');
   }
 
+  function syncComposerSelection(el: HTMLTextAreaElement) {
+    composerSelStartRef.current = el.selectionStart;
+    composerSelEndRef.current = el.selectionEnd;
+  }
+
+  function insertEmoji(emoji: string) {
+    const ta = composerTextareaRef.current;
+    let start = composerSelStartRef.current;
+    let end = composerSelEndRef.current;
+    if (ta && ta === document.activeElement) {
+      start = ta.selectionStart;
+      end = ta.selectionEnd;
+    }
+    const nextPos = start + emoji.length;
+    setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+    composerSelStartRef.current = nextPos;
+    composerSelEndRef.current = nextPos;
+    requestAnimationFrame(() => {
+      const el = composerTextareaRef.current;
+      if (!el) return;
+      el.focus();
+      try {
+        el.setSelectionRange(nextPos, nextPos);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
   function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -877,6 +1093,7 @@ export function ChatPage() {
   }
 
   function onComposerChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    syncComposerSelection(e.target);
     setText(e.target.value);
     const ch = activeChannelIdRef.current;
     if (!ch || !socketRef.current?.connected) return;
@@ -1020,6 +1237,16 @@ export function ChatPage() {
       setPreviousChannelId(null);
       setMessages([]);
     }
+  }
+
+  function setChannelMuted(channelId: string, nextMuted: boolean) {
+    setMutedChannelIds((prev) => {
+      if (nextMuted) {
+        if (prev.includes(channelId)) return prev;
+        return [...prev, channelId];
+      }
+      return prev.filter((id) => id !== channelId);
+    });
   }
 
   const chatSearchNorm = chatSearch.trim().toLowerCase();
@@ -1247,10 +1474,12 @@ export function ChatPage() {
                     channel={channel}
                     isActive={activeChannelId === channel.id}
                     isArchived={archivedChannelIds.includes(channel.id)}
+                    isMuted={mutedChannelIds.includes(channel.id)}
                     onSelect={() => activateChannelForUser(channel.id)}
                     onMarkRead={(id) => void adminMarkChannelRead(id)}
                     onSync={(id) => void adminSyncChannel(id)}
                     onToggleArchive={(id, next) => setChannelArchived(id, next)}
+                    onToggleMute={(id, next) => setChannelMuted(id, next)}
                     onSoftDelete={(id) => void softDeleteFromList(id)}
                     onLeaveGroup={(id) => void leaveGroupFromList(id)}
                   />
@@ -1297,10 +1526,12 @@ export function ChatPage() {
                     channel={channel}
                     isActive={activeChannelId === channel.id}
                     isArchived={archivedChannelIds.includes(channel.id)}
+                    isMuted={mutedChannelIds.includes(channel.id)}
                     onSelect={() => activateChannelForUser(channel.id)}
                     onMarkRead={(id) => void adminMarkChannelRead(id)}
                     onSync={(id) => void adminSyncChannel(id)}
                     onToggleArchive={(id, next) => setChannelArchived(id, next)}
+                    onToggleMute={(id, next) => setChannelMuted(id, next)}
                     onSoftDelete={(id) => void softDeleteFromList(id)}
                     onLeaveGroup={(id) => void leaveGroupFromList(id)}
                   />
@@ -1326,10 +1557,12 @@ export function ChatPage() {
                     channel={channel}
                     isActive={activeChannelId === channel.id}
                     isArchived={archivedChannelIds.includes(channel.id)}
+                    isMuted={mutedChannelIds.includes(channel.id)}
                     onSelect={() => activateChannelForUser(channel.id)}
                     onMarkRead={(id) => void adminMarkChannelRead(id)}
                     onSync={(id) => void adminSyncChannel(id)}
                     onToggleArchive={(id, next) => setChannelArchived(id, next)}
+                    onToggleMute={(id, next) => setChannelMuted(id, next)}
                     onSoftDelete={(id) => void softDeleteFromList(id)}
                     onLeaveGroup={(id) => void leaveGroupFromList(id)}
                   />
@@ -1341,6 +1574,7 @@ export function ChatPage() {
       </aside>
 
       <div
+        ref={threadPanelRef}
         className={`chat-panel chat-panel--thread ${mobilePanel === 'messages' ? 'chat-panel--show-mobile' : 'chat-panel--hide-mobile'}`}
       >
         <header className="chat-thread-head">
@@ -1389,6 +1623,23 @@ export function ChatPage() {
                   </span>
                   {activeChannel.channel_type === 'group' && activeChannel.my_role === 'admin' ? (
                     <span className="chat-pill chat-pill--admin">Administrador</span>
+                  ) : null}
+                  {mutedChannelIds.includes(activeChannel.id) ? (
+                    <>
+                      <span
+                        className="chat-pill chat-pill--muted"
+                        title="Sin sonido, avisos en pantalla ni notificación de escritorio para este chat"
+                      >
+                        Silenciada
+                      </span>
+                      <button
+                        type="button"
+                        className="chat-ghost-btn"
+                        onClick={() => setChannelMuted(activeChannel.id, false)}
+                      >
+                        Activar alertas
+                      </button>
+                    </>
                   ) : null}
                   {activeChannel.ticket_id ? (
                     <Link className="chat-link" to={`/tickets/${activeChannel.ticket_id}`}>
@@ -1586,7 +1837,13 @@ export function ChatPage() {
                       ))}
                     </ul>
                   ) : null}
-                  {message.body ? <p className="chat-bubble__body">{message.body}</p> : null}
+                  {message.messageType === 'nudge' ? (
+                    <p className="chat-bubble__nudge" role="status">
+                      {mine ? '📣 Enviaste un zumbido' : '🔔 Zumbido — te llamó la atención'}
+                    </p>
+                  ) : message.body ? (
+                    <p className="chat-bubble__body">{message.body}</p>
+                  ) : null}
                 </article>
               );
             })
@@ -1595,6 +1852,7 @@ export function ChatPage() {
         </div>
 
         <form className="chat-composer" onSubmit={onSend}>
+          {composerHint ? <p className="chat-composer-hint">{composerHint}</p> : null}
           <input
             ref={fileInputRef}
             type="file"
@@ -1609,18 +1867,118 @@ export function ChatPage() {
           />
           <button
             type="button"
-            className="chat-attach-btn"
+            className="chat-attach-btn chat-composer-icon-btn"
             aria-label="Adjuntar archivo"
+            title="Adjuntar archivo"
             disabled={!activeChannelId}
             onClick={() => fileInputRef.current?.click()}
           >
-            Adjuntar
+            <svg
+              className="chat-composer-icon-btn__svg"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden={true}
+            >
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19A4 4 0 1 1 22 7.24l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+          <div className="chat-emoji-anchor">
+            <button
+              type="button"
+              ref={emojiButtonRef}
+              className="chat-attach-btn chat-composer-icon-btn"
+              aria-label="Insertar emoji"
+              title="Insertar emoji"
+              aria-haspopup="dialog"
+              aria-expanded={emojiPickerOpen}
+              aria-controls={emojiPickerOpen ? 'chat-emoji-picker-popover' : undefined}
+              disabled={!activeChannelId}
+              onMouseDown={(e) => {
+                e.preventDefault();
+              }}
+              onClick={() => setEmojiPickerOpen((open) => !open)}
+            >
+              <svg
+                className="chat-composer-icon-btn__svg"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden={true}
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                <line x1="9" x2="9.01" y1="9" y2="9" />
+                <line x1="15" x2="15.01" y1="9" y2="9" />
+              </svg>
+            </button>
+            {emojiPickerOpen ? (
+              <div
+                ref={emojiPopoverRef}
+                id="chat-emoji-picker-popover"
+                className="chat-emoji-popover"
+                role="dialog"
+                aria-label="Selector de emoji"
+              >
+                <Suspense
+                  fallback={<div className="chat-emoji-popover__loading">Cargando emojis…</div>}
+                >
+                  <LazyEmojiPicker
+                    theme={'light' as Theme}
+                    lazyLoadEmojis
+                    skinTonesDisabled
+                    onEmojiClick={(data: EmojiClickData) => {
+                      insertEmoji(data.emoji);
+                      setEmojiPickerOpen(false);
+                    }}
+                  />
+                </Suspense>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="chat-attach-btn chat-composer-icon-btn"
+            aria-label="Enviar zumbido"
+            title="Zumbido: avisa con sonido y sacudida (como Messenger clásico). Máx. 1 cada 15 s."
+            disabled={!activeChannelId}
+            onClick={() => sendNudge()}
+          >
+            <svg
+              className="chat-composer-icon-btn__svg"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden={true}
+            >
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
           </button>
           <textarea
+            ref={composerTextareaRef}
             className="chat-textarea chat-composer__grow"
             value={text}
             onChange={onComposerChange}
-            onBlur={() => emitTyping(false)}
+            onBlur={(e) => {
+              syncComposerSelection(e.currentTarget);
+              emitTyping(false);
+            }}
+            onSelect={(e) => syncComposerSelection(e.currentTarget)}
+            onKeyUp={(e) => syncComposerSelection(e.currentTarget)}
+            onClick={(e) => syncComposerSelection(e.currentTarget)}
             onKeyDown={onComposerKeyDown}
             placeholder="Escribe un mensaje · Enter envía · Shift+Enter nueva línea"
             rows={3}
@@ -1698,7 +2056,9 @@ export function ChatPage() {
       </aside>
 
       <div className="chat-toast-stack" aria-live="polite">
-        {messageToasts.map((toast) => (
+        {messageToasts
+          .filter((toast) => !mutedChannelIds.includes(toast.channelId))
+          .map((toast) => (
           <button
             key={toast.id}
             type="button"
