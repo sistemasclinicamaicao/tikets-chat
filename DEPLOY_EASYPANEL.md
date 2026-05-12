@@ -79,6 +79,8 @@ Sube `local.dump` por SFTP/SCP al VPS, entra por SSH o terminal del panel y ejec
 
 Solo si tu panel/firewall permite **whitelist por IP** hacia el puerto `5434`; entonces desde tu PC puede funcionar el script [`scripts/migrate-local-db-to-url.ps1`](scripts/migrate-local-db-to-url.ps1) con `-TargetUrl` igual a la cadena del panel (normalizada a `postgresql://...`).
 
+Si la BD remota **ya tenía tablas** y `pg_restore --clean` falla por dependencias FK, usa **`-ResetPublicSchema`** (borra por completo el schema `public` en el destino y luego restaura). Es destructivo: no uses en una BD compartida sin copia previa.
+
 Generar solo el volcado desde tu repo (sin tocar `apps/api/.env`):
 
 ```powershell

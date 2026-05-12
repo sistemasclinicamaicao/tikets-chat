@@ -11,6 +11,10 @@
   Si el destino no es alcanzable desde tu PC (firewall / solo red interna), genera solo el dump:
     .\scripts\migrate-local-db-to-url.ps1 -TargetUrl '...' -DumpOnly
 
+  Si la BD remota ya tiene tablas y pg_restore --clean falla por FKs, borra el esquema public y restaura limpio:
+    .\scripts\migrate-local-db-to-url.ps1 -TargetUrl '...' -ResetPublicSchema
+    (PELIGRO: elimina TODO lo que este en schema public en el destino.)
+
   Luego sube el .dump al servidor y ejecuta allí pg_restore contra localhost o la URL interna.
   Ver DEPLOY_EASYPANEL.md seccion 6 (tunel SSH o restaurar en el servidor).
 #>
@@ -20,7 +24,9 @@ param(
 
   [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
 
-  [switch]$DumpOnly
+  [switch]$DumpOnly,
+
+  [switch]$ResetPublicSchema
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,11 +74,30 @@ if ($DumpOnly) {
 $dst = $TargetUrl.Trim().Trim('"').Trim("'")
 if ($dst -match '^postgres://') { $dst = 'postgresql://' + $dst.Substring('postgres://'.Length) }
 
-Write-Host "Destino: pg_restore --clean --if-exists ..."
-docker run --rm `
-  -e "PGDST=$dst" `
-  -v "${dir}:/backup" `
-  postgres:17-alpine `
-  sh -c 'pg_restore --clean --if-exists --no-owner --no-acl -d "$PGDST" /backup/local.dump'
+if ($ResetPublicSchema) {
+  Write-Host "Destino: DROP SCHEMA public CASCADE + CREATE SCHEMA (irreversible en public)..."
+  Copy-Item (Join-Path $PSScriptRoot 'reset-public-schema.sql') (Join-Path $dir 'reset-public-schema.sql') -Force
+  docker run --rm `
+    -e "PGDST=$dst" `
+    -v "${dir}:/backup" `
+    postgres:17-alpine `
+    sh -c 'psql "$PGDST" -v ON_ERROR_STOP=1 -f /backup/reset-public-schema.sql'
+  if ($LASTEXITCODE -ne 0) { throw 'psql DROP/CREATE schema fallo' }
+  Write-Host "Destino: pg_restore (sin --clean; esquema vacio)..."
+  docker run --rm `
+    -e "PGDST=$dst" `
+    -v "${dir}:/backup" `
+    postgres:17-alpine `
+    sh -c 'pg_restore --no-owner --no-acl -d "$PGDST" /backup/local.dump'
+}
+else {
+  Write-Host "Destino: pg_restore --clean --if-exists ..."
+  docker run --rm `
+    -e "PGDST=$dst" `
+    -v "${dir}:/backup" `
+    postgres:17-alpine `
+    sh -c 'pg_restore --clean --if-exists --no-owner --no-acl -d "$PGDST" /backup/local.dump'
+}
+if ($LASTEXITCODE -ne 0) { throw 'pg_restore fallo (revisa salida arriba)' }
 
 Write-Host "Migracion completada. Copia de seguridad del dump en: $dir"
