@@ -2,8 +2,8 @@
 
 ## 1) Preparar variables
 
-1. Copia `.env.easypanel.example` a `.env.easypanel`.
-2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, MinIO).
+1. Copia `.env.easypanel.example` a `.env.easypanel` (este nombre está en `.gitignore`; no sube secretos al repositorio).
+2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, MinIO, correo e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
 
 ## 2) Archivo Compose (raíz del repo)
 

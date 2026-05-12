@@ -11,6 +11,7 @@ build/
 
 # Environment (never commit secrets)
 .env
+.env.easypanel
 .env.local
 .env.*.local
 apps/*/.env
