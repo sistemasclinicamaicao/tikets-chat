@@ -12,6 +12,7 @@
     .\scripts\migrate-local-db-to-url.ps1 -TargetUrl '...' -DumpOnly
 
   Luego sube el .dump al servidor y ejecuta allí pg_restore contra localhost o la URL interna.
+  Ver DEPLOY_EASYPANEL.md seccion 6 (tunel SSH o restaurar en el servidor).
 #>
 param(
   [Parameter(Mandatory = $true)]
