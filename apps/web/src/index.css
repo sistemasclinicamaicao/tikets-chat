@@ -808,46 +808,34 @@ button.dashboard-header__avatar:focus-visible {
   100% {
     transform: translate3d(0, 0, 0);
   }
-  8% {
-    transform: translate3d(-7px, 2px, 0);
-  }
-  16% {
-    transform: translate3d(7px, -2px, 0);
+  12% {
+    transform: translate3d(-12px, 3px, 0);
   }
   24% {
-    transform: translate3d(-6px, -1px, 0);
+    transform: translate3d(12px, -3px, 0);
   }
-  32% {
-    transform: translate3d(6px, 2px, 0);
-  }
-  40% {
-    transform: translate3d(-5px, 1px, 0);
+  36% {
+    transform: translate3d(-10px, -2px, 0);
   }
   48% {
-    transform: translate3d(5px, -1px, 0);
+    transform: translate3d(10px, 3px, 0);
   }
-  56% {
-    transform: translate3d(-4px, 0, 0);
-  }
-  64% {
-    transform: translate3d(4px, 1px, 0);
+  60% {
+    transform: translate3d(-8px, 1px, 0);
   }
   72% {
-    transform: translate3d(-3px, -1px, 0);
+    transform: translate3d(8px, -2px, 0);
   }
-  80% {
-    transform: translate3d(3px, 0, 0);
+  84% {
+    transform: translate3d(-5px, 0, 0);
   }
-  88% {
-    transform: translate3d(-2px, 0, 0);
-  }
-  96% {
-    transform: translate3d(1px, 0, 0);
+  92% {
+    transform: translate3d(3px, 1px, 0);
   }
 }
 
-.chat-panel--thread.chat-panel--nudge-shake {
-  animation: chat-nudge-shake 0.85s ease-in-out;
+.chat-app.chat-app--nudge-shake {
+  animation: chat-nudge-shake 0.42s ease-in-out 4;
   will-change: transform;
 }
 .chat-panel--people {

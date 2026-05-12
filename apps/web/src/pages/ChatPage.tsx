@@ -27,6 +27,7 @@ import {
   playChatIncomingSound,
   playChatNudgeBuzz,
   requestDesktopNotificationPermission,
+  triggerNudgeDeviceVibrate,
 } from '../lib/chatMessageAlerts';
 import type { ChatMessage, GroupMember } from '../lib/api';
 import type { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -404,7 +405,7 @@ export function ChatPage() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
-  const threadPanelRef = useRef<HTMLDivElement>(null);
+  const chatRootRef = useRef<HTMLElement>(null);
   const typingClearTimerRef = useRef(0);
   const stickToBottomRef = useRef(true);
   const groupMembersDialogRef = useRef<HTMLDialogElement>(null);
@@ -666,15 +667,24 @@ export function ChatPage() {
     socketRef.current.emit('chat:typing', { channel_id: ch, typing });
   }
 
-  function triggerThreadNudgeShake() {
-    const el = threadPanelRef.current;
+  function triggerChatNudgeShake() {
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    const el = chatRootRef.current;
     if (!el) return;
-    el.classList.remove('chat-panel--nudge-shake');
+    el.classList.remove('chat-app--nudge-shake');
     void el.offsetWidth;
-    el.classList.add('chat-panel--nudge-shake');
+    el.classList.add('chat-app--nudge-shake');
     window.setTimeout(() => {
-      el.classList.remove('chat-panel--nudge-shake');
-    }, 900);
+      el.classList.remove('chat-app--nudge-shake');
+    }, 1750);
+  }
+
+  function fireLocalNudgeFeedback() {
+    playChatNudgeBuzz();
+    triggerNudgeDeviceVibrate();
+    triggerChatNudgeShake();
   }
 
   function sendNudge() {
@@ -689,7 +699,9 @@ export function ChatPage() {
           if (ack?.ok === false && ack?.error === 'rate_limited') {
             setComposerHint('Espera unos segundos entre zumbidos.');
             window.setTimeout(() => setComposerHint(''), 4000);
+            return;
           }
+          fireLocalNudgeFeedback();
         },
       );
     } else {
@@ -720,6 +732,7 @@ export function ChatPage() {
               ),
             ),
           );
+          fireLocalNudgeFeedback();
         } catch {
           setComposerHint('No se pudo enviar el zumbido.');
           window.setTimeout(() => setComposerHint(''), 4000);
@@ -815,11 +828,8 @@ export function ChatPage() {
 
         if (isNudge) {
           if (!channelMuted) {
-            playChatNudgeBuzz();
-            if (payload.channel_id === active) {
-              triggerThreadNudgeShake();
-            }
-            if (!channelMuted && payload.channel_id !== active) {
+            fireLocalNudgeFeedback();
+            if (payload.channel_id !== active) {
               const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
               const title = formatDisplayName(chRow?.name) || 'Chat';
               setMessageToasts((prev) => {
@@ -1305,7 +1315,11 @@ export function ChatPage() {
     : undefined;
 
   return (
-    <section className={`chat-app ${showPeoplePanel ? '' : 'chat-app--people-hidden'}`} aria-label="Chat">
+    <section
+      ref={chatRootRef}
+      className={`chat-app ${showPeoplePanel ? '' : 'chat-app--people-hidden'}`}
+      aria-label="Chat"
+    >
       <div className="chat-mobile-tabs">
         <button
           type="button"
@@ -1574,7 +1588,6 @@ export function ChatPage() {
       </aside>
 
       <div
-        ref={threadPanelRef}
         className={`chat-panel chat-panel--thread ${mobilePanel === 'messages' ? 'chat-panel--show-mobile' : 'chat-panel--hide-mobile'}`}
       >
         <header className="chat-thread-head">

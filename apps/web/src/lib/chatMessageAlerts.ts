@@ -55,7 +55,23 @@ function playFallbackIncomingChime(): void {
   }
 }
 
-/** Tono tipo “vibración” de zumbido (MSN / Messenger clásico). Respeta `chat_sound_enabled`. */
+/** Vibración háptica (móviles con soporte). No depende del silencio de sonido del chat. */
+export function triggerNudgeDeviceVibrate(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      void navigator.vibrate([140, 50, 140, 50, 140, 70, 220, 45, 180]);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Tono de zumbido estilo Messenger clásico: golpes graves + armónicos agudos.
+ * Respeta `chat_sound_enabled`.
+ */
 export function playChatNudgeBuzz(): void {
   if (typeof window === 'undefined' || !isChatSoundEnabled()) return;
   const Ctor =
@@ -65,23 +81,32 @@ export function playChatNudgeBuzz(): void {
   try {
     const ctx = new Ctor();
     const now = ctx.currentTime;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.14;
-    gain.connect(ctx.destination);
-    const pulses = [0, 0.14, 0.28, 0.42];
-    pulses.forEach((t0) => {
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.22, now);
+    master.gain.exponentialRampToValueAtTime(0.01, now + 1.35);
+    master.connect(ctx.destination);
+
+    const freqs = [165, 220, 185, 240, 165, 220, 185, 255, 165, 220];
+    freqs.forEach((hz, i) => {
+      const t0 = now + i * 0.1;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.55, t0 + 0.02);
+      g.gain.linearRampToValueAtTime(0.001, t0 + 0.11);
+      g.connect(master);
+
       const osc = ctx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.value = 180;
-      osc.connect(gain);
-      const start = now + t0;
-      osc.start(start);
-      osc.stop(start + 0.09);
+      osc.type = i % 3 === 0 ? 'square' : 'sawtooth';
+      osc.frequency.setValueAtTime(hz, t0);
+      osc.connect(g);
+      osc.start(t0);
+      osc.stop(t0 + 0.12);
     });
+
     void ctx.resume().catch(() => undefined);
     window.setTimeout(() => {
       void ctx.close().catch(() => undefined);
-    }, 900);
+    }, 1600);
   } catch {
     /* ignore */
   }
