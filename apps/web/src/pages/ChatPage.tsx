@@ -1627,15 +1627,33 @@ export function ChatPage() {
             {activeChannel ? (
               <>
                 <p className="chat-thread-head__meta">
-                  <span className="chat-pill">
+                  <span
+                    className="chat-pill"
+                    title={
+                      activeChannel.channel_type === 'dm'
+                        ? 'Directo'
+                        : activeChannel.channel_type === 'group'
+                          ? 'Grupo'
+                          : 'Ticket'
+                    }
+                    aria-label={
+                      activeChannel.channel_type === 'dm'
+                        ? 'Directo'
+                        : activeChannel.channel_type === 'group'
+                          ? 'Grupo'
+                          : 'Ticket'
+                    }
+                  >
                     {activeChannel.channel_type === 'dm'
-                      ? 'Directo'
+                      ? '↔'
                       : activeChannel.channel_type === 'group'
-                        ? 'Grupo'
-                        : 'Ticket'}
+                        ? '👥'
+                        : '🎫'}
                   </span>
                   {activeChannel.channel_type === 'group' && activeChannel.my_role === 'admin' ? (
-                    <span className="chat-pill chat-pill--admin">Administrador</span>
+                    <span className="chat-pill chat-pill--admin" title="Administrador" aria-label="Administrador">
+                      ★
+                    </span>
                   ) : null}
                   {mutedChannelIds.includes(activeChannel.id) ? (
                     <>
@@ -1647,32 +1665,36 @@ export function ChatPage() {
                       </span>
                       <button
                         type="button"
-                        className="chat-ghost-btn"
+                        className="chat-ghost-btn chat-header-symbol-btn"
+                        title="Activar alertas"
+                        aria-label="Activar alertas"
                         onClick={() => setChannelMuted(activeChannel.id, false)}
                       >
-                        Activar alertas
+                        🔔
                       </button>
                     </>
                   ) : null}
                   {activeChannel.ticket_id ? (
-                    <Link className="chat-link" to={`/tickets/${activeChannel.ticket_id}`}>
-                      Abrir ticket
+                    <Link className="chat-link chat-header-symbol-link" to={`/tickets/${activeChannel.ticket_id}`} title="Abrir ticket" aria-label="Abrir ticket">
+                      ↗
                     </Link>
                   ) : null}
                 </p>
                 {activeChannel.channel_type === 'group' ? (
-                  <p className="chat-thread-head__group-compact">
+                  <>
                     <span className="chat-group-compact__count">
                       {groupMembersLoading ? 'Cargando…' : `${groupMembers.length} miembros`}
                     </span>
                     <button
                       type="button"
-                      className="chat-ghost-btn chat-group-compact__btn"
+                      className="chat-ghost-btn chat-group-compact__btn chat-header-symbol-btn"
+                      title={activeChannel.my_role === 'admin' ? 'Gestionar miembros' : 'Ver miembros'}
+                      aria-label={activeChannel.my_role === 'admin' ? 'Gestionar miembros' : 'Ver miembros'}
                       onClick={() => openGroupMembersDialog()}
                     >
-                      {activeChannel.my_role === 'admin' ? 'Gestionar miembros' : 'Ver miembros'}
+                      👥
                     </button>
-                  </p>
+                  </>
                 ) : null}
                 {typingUserId && typingUserId !== currentUserId ? (
                   <p className="chat-typing-hint" aria-live="polite">
@@ -1691,8 +1713,14 @@ export function ChatPage() {
           </div>
           {activeChannel ? (
             <div className="chat-thread-actions">
-              <button type="button" className="chat-ghost-btn" onClick={() => void loadMessages(activeChannel.id)}>
-                Actualizar mensajes
+              <button
+                type="button"
+                className="chat-ghost-btn chat-header-symbol-btn"
+                title="Actualizar mensajes"
+                aria-label="Actualizar mensajes"
+                onClick={() => void loadMessages(activeChannel.id)}
+              >
+                ↻
               </button>
             </div>
           ) : null}
