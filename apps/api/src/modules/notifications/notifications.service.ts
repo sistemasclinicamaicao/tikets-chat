@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
 
 const TEMPLATE = {
   ticketCreated: 'ticket_created',
@@ -30,10 +29,7 @@ function ticketLink(ticketId: string): string {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly mail: MailService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async notifyTicketCreated(ticketId: string, departmentId: string): Promise<void> {
     try {
@@ -238,77 +234,19 @@ export class NotificationsService {
     subject: string;
     bodyPlain: string;
   }): Promise<void> {
-    /** Solo OTP por correo salvo que se active explícitamente el correo transaccional (tickets, etc.). */
-    if ((process.env.ENABLE_NON_OTP_EMAIL ?? '').trim().toLowerCase() !== 'true') {
-      return;
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: params.userId },
-      select: { email: true, isActive: true },
-    });
-
-    if (!user?.isActive) {
-      await this.prisma.notificationLog.create({
-        data: {
-          userId: params.userId,
-          notificationTemplateId: params.templateId,
-          channel: 'email',
-          recipient: params.userId,
-          subject: params.subject,
-          body: params.bodyPlain,
-          status: 'skipped',
-          errorMessage: 'USER_INACTIVE',
-        },
-      });
-      return;
-    }
-
-    const email = user.email?.trim() ?? '';
-    if (!email) {
-      await this.prisma.notificationLog.create({
-        data: {
-          userId: params.userId,
-          notificationTemplateId: params.templateId,
-          channel: 'email',
-          recipient: params.userId,
-          subject: params.subject,
-          body: params.bodyPlain,
-          status: 'skipped',
-          errorMessage: 'NO_EMAIL',
-        },
-      });
-      return;
-    }
-
-    const log = await this.prisma.notificationLog.create({
+    /** Regla de producto: el correo solo se usa para OTP, nunca para tickets/chat. */
+    await this.prisma.notificationLog.create({
       data: {
         userId: params.userId,
         notificationTemplateId: params.templateId,
         channel: 'email',
-        recipient: email,
+        recipient: params.userId,
         subject: params.subject,
         body: params.bodyPlain,
-        status: 'pending',
+        status: 'skipped',
+        errorMessage: 'EMAIL_ONLY_FOR_OTP',
       },
     });
-
-    const result = await this.mail.sendTransactionalMail({
-      to: email,
-      subject: params.subject,
-      text: params.bodyPlain,
-    });
-
-    if (result.ok) {
-      await this.prisma.notificationLog.update({
-        where: { id: log.id },
-        data: { status: 'sent', sentAt: new Date(), errorMessage: null },
-      });
-    } else {
-      await this.prisma.notificationLog.update({
-        where: { id: log.id },
-        data: { status: 'failed', errorMessage: result.code },
-      });
-    }
+    return;
   }
 }

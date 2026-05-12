@@ -36,30 +36,15 @@ export class MailService {
   }
 
   /**
-   * Envío genérico para notificaciones de dominio. No lanza: el llamador persiste `failed` / `skipped` en BD.
+   * Bloqueado por regla de producto: el correo solo se usa para OTP.
+   * Se conserva la firma para evitar reintroducir envíos transaccionales accidentalmente.
    */
-  async sendTransactionalMail(params: {
+  async sendTransactionalMail(_params: {
     to: string;
     subject: string;
     text: string;
     html?: string;
   }): Promise<{ ok: true } | { ok: false; code: string }> {
-    const from = process.env.MAIL_DEFAULT_SENDER || process.env.MAIL_USERNAME;
-    const to = params.to?.trim();
-    if (!to || !from) {
-      return { ok: false, code: 'MAIL_CONFIG_INCOMPLETE' };
-    }
-    try {
-      await this.transporter.sendMail({
-        from,
-        to,
-        subject: params.subject,
-        text: params.text,
-        ...(params.html ? { html: params.html } : {}),
-      });
-      return { ok: true };
-    } catch {
-      return { ok: false, code: 'MAIL_SEND_FAILED' };
-    }
+    return { ok: false, code: 'EMAIL_ONLY_FOR_OTP' };
   }
 }

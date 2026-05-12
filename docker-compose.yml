@@ -49,8 +49,6 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_DEFAULT_SENDER: ${MAIL_DEFAULT_SENDER:-}
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
-      ENABLE_NON_OTP_EMAIL: ${ENABLE_NON_OTP_EMAIL:-}
     depends_on:
       postgres:
         condition: service_healthy

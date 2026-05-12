@@ -3,7 +3,7 @@
 ## 1) Preparar variables
 
 1. Copia `.env.easypanel.example` a `.env.easypanel` (este nombre está en `.gitignore`; no sube secretos al repositorio).
-2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, `PUBLIC_APP_URL` si usarás `ENABLE_NON_OTP_EMAIL`, JWT, PostgreSQL, Redis, MinIO, correo OTP e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
+2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, MinIO, correo OTP e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
 
 ## 2) Archivo Compose (raíz del repo)
 
@@ -58,7 +58,7 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 - El contenedor `web` publica el frontend en `${WEB_PORT}`.
 - El contenedor `api` no expone puerto público en este compose; se consume vía red interna desde `web`.
 - Si usarás dominio único con reverse proxy externo de EasyPanel, mantén `VITE_API_ORIGIN` apuntando a ese dominio/API final.
-- **Correo transaccional:** por defecto el API **no** envía correos de tickets ni de chat; solo el flujo **OTP** usa `MailService`. Para activar correos de tickets, define `ENABLE_NON_OTP_EMAIL=true` (y `PUBLIC_APP_URL` para enlaces). Los mensajes de chat (DM, grupo, canal de ticket) **no** se envían por correo.
+- **Correo:** el API solo envía correos OTP. Tickets, chat, mensajes directos, grupos y canales de ticket no envían correos.
 - **Chat en el front:** toasts y sonido al recibir mensajes; tono WAV opcional en `apps/web/public/sounds/chat-incoming.wav` (si no existe, suena un tono sintético). El cliente re-emite `chat:sync-rooms` al detectar canal nuevo y cada 45 s para mantener las salas Socket.IO alineadas con la membresía.
 
 ## 6) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway
