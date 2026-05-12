@@ -5,7 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
+    /** Solo 5173: si el puerto está ocupado, Vite falla (no intenta 5174, 5175, …). */
     port: 5173,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3030',
