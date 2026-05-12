@@ -1,0 +1,18 @@
+# Raíz del repo: imagen solo front (Vite → nginx estático).
+# EasyPanel: segundo servicio, Dockerfile = Dockerfile.web, build-arg obligatorio VITE_API_ORIGIN = URL HTTPS del API (sin / final).
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+
+COPY apps/web/package*.json ./
+RUN npm ci
+
+COPY apps/web/ ./
+ARG VITE_API_ORIGIN
+ENV VITE_API_ORIGIN=${VITE_API_ORIGIN}
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80

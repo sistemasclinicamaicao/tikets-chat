@@ -24,7 +24,19 @@ En EasyPanel, configura el proyecto tipo **Docker Compose** apuntando al archivo
 | Rama | `main` |
 | Ruta de compilación | `/` (raíz; el compose y los Dockerfiles referenciados están bajo `apps/`) |
 
-Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Dockerfile`](Dockerfile) en la **raíz** que construye el **API** (mismo resultado que `apps/api/Dockerfile`). Para el front, otro servicio con ruta `/apps/web` o, mejor, proyecto **Docker Compose** con [`docker-compose.yml`](docker-compose.yml).
+Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Dockerfile`](Dockerfile) en la **raíz** que construye el **API** (mismo resultado que `apps/api/Dockerfile`). Para el front en un **segundo** servicio EasyPanel, usa [`Dockerfile.web`](Dockerfile.web) en la raíz (build-arg **`VITE_API_ORIGIN`** = URL HTTPS del API, sin barra final). Mejor aún: proyecto **Docker Compose** con [`docker-compose.yml`](docker-compose.yml) para API + web + Postgres + MinIO + Redis.
+
+## 8) EasyPanel: segundo servicio solo front (`Dockerfile.web`)
+
+1. En el mismo proyecto (p. ej. **py3**), crea un servicio nuevo (p. ej. **`chat-ui`**, tipo app desde GitHub).
+2. **Ruta de compilación:** `/` (raíz del repo).
+3. **Dockerfile:** `Dockerfile.web` (no el de la API).
+4. **Build arguments** (obligatorio): `VITE_API_ORIGIN` = la URL pública del API, p. ej. `https://py3-chat.tjgwxu.easypanel.host` (sin `/` al final).
+5. **Dominios:** crea un host para la UI (p. ej. `py3-ui.tjgwxu.easypanel.host`) y apunta el proxy interno a **`http://<nombre_servicio_ui>:80/`** (nginx escucha en 80).
+
+Con `VITE_API_ORIGIN` definido en build, el navegador llama al API y a Socket.IO **directamente** a ese origen; el `proxy_pass` de `nginx.conf` hacia `api:3030` solo aplica en el stack Compose cuando el servicio se llama `api`.
+
+Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y las peticiones ir a tu dominio del API.
 
 ## 3) Orden de arranque y migraciones
 

@@ -1,5 +1,6 @@
 # Raíz del repo: EasyPanel (y otros) suelen ejecutar `docker build` aquí.
-# Construye solo el API Nest. Para web + Postgres + Minio + Redis use docker-compose.yml (proyecto Compose en EasyPanel).
+# Construye solo el API Nest. Para el front: Dockerfile.web en esta misma raíz.
+# Para web + Postgres + Minio + Redis use docker-compose.yml (proyecto Compose en EasyPanel).
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
