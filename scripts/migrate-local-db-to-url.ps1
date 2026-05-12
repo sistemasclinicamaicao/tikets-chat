@@ -16,7 +16,7 @@
     (PELIGRO: elimina TODO lo que este en schema public en el destino.)
 
   Luego sube el .dump al servidor y ejecuta allí pg_restore contra localhost o la URL interna.
-  Ver DEPLOY_EASYPANEL.md seccion 6 (tunel SSH o restaurar en el servidor).
+  Ver DEPLOY_EASYPANEL.md seccion 6 (502 dominio puerto 3030) y seccion 7 (migrar BD).
 #>
 param(
   [Parameter(Mandatory = $true)]

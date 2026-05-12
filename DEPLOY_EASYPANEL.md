@@ -47,7 +47,19 @@ Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Do
 - El contenedor `api` no expone puerto público en este compose; se consume vía red interna desde `web`.
 - Si usarás dominio único con reverse proxy externo de EasyPanel, mantén `VITE_API_ORIGIN` apuntando a ese dominio/API final.
 
-## 6) Copiar la BD desde tu PC (desarrollo) a Postgres en EasyPanel
+## 6) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway
+
+Si el dominio en **Dominios** apunta a `http://<servicio>:80` pero la imagen del API Nest escucha en **`PORT` 3030** (por defecto), el proxy no encuentra proceso en el puerto 80 y responde **502**.
+
+**Corrección:** en la fila del dominio HTTPS, cambia el destino interno a **`http://<nombre_servicio>:3030/`** (mismo host Docker que ya usas, puerto **3030**).
+
+Comprueba con `GET https://<tu-dominio>/api/v1/health` (debe devolver 200). La raíz `GET /` no sirve el SPA del front: ese HTML lo da el contenedor **web** del `docker-compose.yml`; si quieres la UI en un dominio, despliega el stack Compose o un segundo servicio que construya `apps/web` (nginx en 80).
+
+### Error Prisma `P3009` (migración fallida)
+
+Si en logs aparece `migrate found failed migrations` y el contenedor reinicia en bucle, la tabla `_prisma_migrations` tiene una migración marcada como fallida. Hay que resolverla según [documentación Prisma](https://www.prisma.io/docs/guides/migrate/production-troubleshooting) (`prisma migrate resolve`) o corregir la BD y volver a desplegar. Mientras `migrate deploy` falle, **no se ejecutará** `node dist/main` (el entrypoint sale antes).
+
+## 7) Copiar la BD desde tu PC (desarrollo) a Postgres en EasyPanel
 
 La URL que muestra el panel (`postgres://...@panel...:5434/...`) suele ser **solo alcanzable desde la red del servidor** o con reglas de firewall. Desde tu PC a menudo verás **connection refused** aunque la URL sea correcta: no es un error de `pg_restore`, es que **el puerto no está abierto a Internet** (recomendable por seguridad).
 
