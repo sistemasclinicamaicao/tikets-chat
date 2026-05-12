@@ -34,7 +34,7 @@ Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Do
 4. **Build arguments** (obligatorio): `VITE_API_ORIGIN` = la URL pública del API, p. ej. `https://py3-chat.tjgwxu.easypanel.host` (sin `/` al final).
 5. **Dominios:** crea un host para la UI (p. ej. `py3-ui.tjgwxu.easypanel.host`) y apunta el proxy interno a **`http://<nombre_servicio_ui>:80/`** (nginx escucha en 80).
 
-Con `VITE_API_ORIGIN` definido en build, el navegador llama al API y a Socket.IO **directamente** a ese origen; el `proxy_pass` de `nginx.conf` hacia `api:3030` solo aplica en el stack Compose cuando el servicio se llama `api`.
+Con `VITE_API_ORIGIN` en el build, el navegador habla con el API y Socket.IO en ese origen; no hace falta que nginx enlace al contenedor `api` (eso solo aplica en Compose con servicio `api`). La imagen `Dockerfile.web` usa `nginx.standalone.conf` (sin `proxy_pass` a `api`) para que nginx arranque en un servicio aislado.
 
 Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y las peticiones ir a tu dominio del API.
 
