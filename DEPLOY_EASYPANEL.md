@@ -3,7 +3,7 @@
 ## 1) Preparar variables
 
 1. Copia `.env.easypanel.example` a `.env.easypanel` (este nombre está en `.gitignore`; no sube secretos al repositorio).
-2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, MinIO, correo e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
+2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, `PUBLIC_APP_URL`, JWT, PostgreSQL, Redis, MinIO, correo e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
 
 ## 2) Archivo Compose (raíz del repo)
 
@@ -58,6 +58,8 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 - El contenedor `web` publica el frontend en `${WEB_PORT}`.
 - El contenedor `api` no expone puerto público en este compose; se consume vía red interna desde `web`.
 - Si usarás dominio único con reverse proxy externo de EasyPanel, mantén `VITE_API_ORIGIN` apuntando a ese dominio/API final.
+- **Notificaciones por correo (API):** define `PUBLIC_APP_URL` con la URL HTTPS del **front** (mismo origen que usan los usuarios) para enlaces en emails de ticket/chat. Opcional: `NOTIFY_CHAT_EMAIL=false` desactiva solo los correos por mensajes nuevos de chat.
+- **Chat en el front:** toasts y sonido al recibir mensajes; tono WAV opcional en el build: `apps/web/public/sounds/chat-incoming.wav` (si no existe, suena un tono sintético).
 
 ## 6) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway
 

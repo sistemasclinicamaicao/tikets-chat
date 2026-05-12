@@ -19,6 +19,14 @@ import {
   softDeleteChatConversation,
 } from '../lib/api';
 import { ensureRealtimeConnected, subscribeRealtimeStatus } from '../lib/chatRealtime';
+import {
+  getDesktopNotificationPermission,
+  isChatSoundEnabled,
+  notifyDesktopIfBackground,
+  persistChatSoundEnabled,
+  playChatIncomingSound,
+  requestDesktopNotificationPermission,
+} from '../lib/chatMessageAlerts';
 import type { ChatMessage, GroupMember } from '../lib/api';
 
 const MESSAGES_PAGE_SIZE = 50;
@@ -327,6 +335,16 @@ export function ChatPage() {
   const [mobilePanel, setMobilePanel] = useState<'channels' | 'messages' | 'people'>('channels');
   const [showPeoplePanel, setShowPeoplePanel] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const channelsRef = useRef<Channel[]>([]);
+  const [messageToasts, setMessageToasts] = useState<
+    { id: string; channelId: string; title: string; body: string }[]
+  >([]);
+  const [chatSoundEnabled, setChatSoundEnabled] = useState(() =>
+    typeof window !== 'undefined' ? isChatSoundEnabled() : true,
+  );
+  const [notifPermission, setNotifPermission] = useState<'unsupported' | NotificationPermission>(() =>
+    getDesktopNotificationPermission(),
+  );
   const [users, setUsers] = useState<ChatUser[]>([]);
   /** Búsqueda única: canales (directos / grupos / tickets) y personas. */
   const [chatSearch, setChatSearch] = useState('');
@@ -411,6 +429,10 @@ export function ChatPage() {
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
   }, [activeChannelId]);
+
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -647,6 +669,24 @@ export function ChatPage() {
           }),
         );
       });
+
+      const me = localStorage.getItem('user_id') ?? '';
+      if (msg.user.id !== me) {
+        playChatIncomingSound();
+        const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
+        const title = formatDisplayName(chRow?.name) || 'Chat';
+        const bodyText = lastMessagePreview(msg);
+        if (payload.channel_id !== active) {
+          setMessageToasts((prev) => {
+            if (prev.some((t) => t.id === msg.id)) return prev;
+            window.setTimeout(() => {
+              setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
+            }, 6000);
+            return [...prev, { id: msg.id, channelId: payload.channel_id, title, body: bodyText }];
+          });
+        }
+        notifyDesktopIfBackground(title, bodyText);
+      }
     }
 
     function onPresence(payload: { online_user_ids: string[] }) {
@@ -680,6 +720,7 @@ export function ChatPage() {
 
   useEffect(() => {
     function onVisibility() {
+      setNotifPermission(getDesktopNotificationPermission());
       if (document.visibilityState !== 'visible') return;
       socketRef.current?.emit('chat:sync-rooms');
       void Promise.all([getChatUsers(), getChatPresence()])
@@ -1081,6 +1122,47 @@ export function ChatPage() {
             <button type="button" className="chat-icon-btn" onClick={() => refreshAll()} disabled={refreshing}>
               {refreshing ? '…' : '↻'}
             </button>
+            <button
+              type="button"
+              className="chat-icon-btn"
+              title={chatSoundEnabled ? 'Silenciar sonido al recibir mensajes' : 'Activar sonido al recibir mensajes'}
+              aria-label={chatSoundEnabled ? 'Silenciar sonido de mensajes' : 'Activar sonido de mensajes'}
+              aria-pressed={chatSoundEnabled}
+              onClick={() => {
+                setChatSoundEnabled((prev) => {
+                  const next = !prev;
+                  persistChatSoundEnabled(next);
+                  return next;
+                });
+              }}
+            >
+              {chatSoundEnabled ? '🔊' : '🔇'}
+            </button>
+            {notifPermission === 'default' ? (
+              <button
+                type="button"
+                className="chat-icon-btn"
+                title="Activar avisos del sistema (navegador)"
+                aria-label="Activar avisos del sistema"
+                onClick={() => {
+                  void requestDesktopNotificationPermission().then((p) => {
+                    if (p !== 'unsupported') setNotifPermission(p);
+                  });
+                }}
+              >
+                📢
+              </button>
+            ) : null}
+            {notifPermission === 'denied' ? (
+              <span
+                className="chat-icon-btn chat-icon-btn--disabled"
+                title="Avisos del sistema bloqueados en el navegador"
+                aria-label="Avisos del sistema no disponibles"
+                role="status"
+              >
+                🚫
+              </span>
+            ) : null}
           </div>
         </header>
         <div className="chat-app__search">
@@ -1599,6 +1681,24 @@ export function ChatPage() {
           })}
         </ul>
       </aside>
+
+      <div className="chat-toast-stack" aria-live="polite">
+        {messageToasts.map((toast) => (
+          <button
+            key={toast.id}
+            type="button"
+            className="chat-toast"
+            onClick={() => {
+              setMessageToasts((p) => p.filter((t) => t.id !== toast.id));
+              activateChannelForUser(toast.channelId);
+            }}
+          >
+            <span className="chat-toast__title">{toast.title}</span>
+            <span className="chat-toast__body">{toast.body}</span>
+            <span className="chat-toast__hint">Clic para abrir</span>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }

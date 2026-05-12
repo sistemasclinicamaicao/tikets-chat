@@ -40,6 +40,8 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_DEFAULT_SENDER: ${MAIL_DEFAULT_SENDER:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      NOTIFY_CHAT_EMAIL: ${NOTIFY_CHAT_EMAIL:-true}
     depends_on:
       postgres:
         condition: service_healthy
