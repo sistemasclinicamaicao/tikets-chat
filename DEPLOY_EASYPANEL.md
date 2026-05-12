@@ -53,7 +53,7 @@ Si el dominio en **Dominios** apunta a `http://<servicio>:80` pero la imagen del
 
 **Corrección:** en la fila del dominio HTTPS, cambia el destino interno a **`http://<nombre_servicio>:3030/`** (mismo host Docker que ya usas, puerto **3030**).
 
-Comprueba con `GET https://<tu-dominio>/api/v1/health` (debe devolver 200). La raíz `GET /` no sirve el SPA del front: ese HTML lo da el contenedor **web** del `docker-compose.yml`; si quieres la UI en un dominio, despliega el stack Compose o un segundo servicio que construya `apps/web` (nginx en 80).
+Comprueba con `GET https://<tu-dominio>/api/v1/health` (debe devolver 200). La raíz `GET /` responde JSON de bienvenida (solo API); el SPA de Vite lo sirve el contenedor **web** del `docker-compose.yml` o un servicio aparte que construya `apps/web`.
 
 ### Error Prisma `P3009` (migración fallida)
 

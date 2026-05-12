@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuditModule } from './common/audit/audit.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { HealthController } from './health.controller';
+import { RootController } from './root.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
@@ -37,6 +38,6 @@ import { InventoryModule } from './modules/inventory/inventory.module';
     ChatModule,
     InventoryModule,
   ],
-  controllers: [HealthController],
+  controllers: [RootController, HealthController],
 })
 export class AppModule {}
