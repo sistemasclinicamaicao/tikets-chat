@@ -9,7 +9,6 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
@@ -20,7 +19,6 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
-    private readonly notifications: NotificationsService,
   ) {}
 
   setUserOnline(userId: string) {
@@ -646,22 +644,6 @@ export class ChatService {
     return rows.map((row) => row.channel_id);
   }
 
-  /** Miembros del canal visibles (no ocultos), excluyendo un usuario — p. ej. destinatarios de email al enviar mensaje. */
-  private async listChannelMemberUserIdsForNotifications(
-    channelId: string,
-    exceptUserId: string,
-  ): Promise<string[]> {
-    await this.ensureMembershipTable();
-    const rows = await this.prisma.$queryRaw<{ user_id: string }[]>`
-      SELECT user_id
-      FROM chat_channel_members
-      WHERE channel_id = ${channelId}
-        AND user_id <> ${exceptUserId}
-        AND hidden_from_ui_at IS NULL
-    `;
-    return rows.map((r) => r.user_id);
-  }
-
   private messageInclude() {
     return {
       user: { select: { id: true, name: true, employeeId: true } },
@@ -781,20 +763,6 @@ export class ChatService {
       include: this.messageInclude(),
     });
 
-    const recipientUserIds = await this.listChannelMemberUserIdsForNotifications(
-      channelId,
-      userId,
-    );
-    const preview = body.trim().slice(0, 280) || '(mensaje)';
-    await this.notifications.notifyChatNewMessage({
-      channelId,
-      messageId: message.id,
-      senderUserId: userId,
-      senderName: message.user.name,
-      preview,
-      recipientUserIds,
-    });
-
     return message;
   }
 
@@ -837,31 +805,10 @@ export class ChatService {
       });
     }
 
-    const full = await this.prisma.chatMessage.findUniqueOrThrow({
+    return this.prisma.chatMessage.findUniqueOrThrow({
       where: { id: msg.id },
       include: this.messageInclude(),
     });
-
-    const recipientUserIds = await this.listChannelMemberUserIdsForNotifications(
-      channelId,
-      userId,
-    );
-    const bodyPreview = text.slice(0, 280);
-    const preview =
-      bodyPreview ||
-      (full.attachments?.length
-        ? `Adjunto: ${full.attachments[0].originalName}`
-        : '(mensaje)');
-    await this.notifications.notifyChatNewMessage({
-      channelId,
-      messageId: full.id,
-      senderUserId: userId,
-      senderName: full.user.name,
-      preview,
-      recipientUserIds,
-    });
-
-    return full;
   }
 
   async getAttachmentDownloadUrl(userId: string, attachmentId: string) {

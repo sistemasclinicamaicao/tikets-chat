@@ -648,7 +648,12 @@ export function ChatPage() {
       setChannels((prev) => {
         if (!prev.some((ch) => ch.id === payload.channel_id)) {
           void getChatChannels()
-            .then((data) => setChannels(sortChannelsByActivity(data)))
+            .then((data) => {
+              setChannels(sortChannelsByActivity(data));
+              queueMicrotask(() => {
+                socketRef.current?.emit('chat:sync-rooms');
+              });
+            })
             .catch(() => undefined);
           return prev;
         }
@@ -732,6 +737,16 @@ export function ChatPage() {
     }
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  /** Re-suscribe salas Socket.IO con la membresía actual (DM/grupos/tickets) para no perder mensajes en tiempo real. */
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('chat:sync-rooms');
+      }
+    }, 45_000);
+    return () => window.clearInterval(t);
   }, []);
 
   useEffect(() => {

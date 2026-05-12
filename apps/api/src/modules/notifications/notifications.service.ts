@@ -7,7 +7,6 @@ const TEMPLATE = {
   ticketAssigned: 'ticket_assigned',
   ticketStatusChanged: 'ticket_status_changed',
   ticketClosed: 'ticket_closed',
-  chatNewMessage: 'chat_new_message',
 } as const;
 
 function formatTicketNumberDisplay(n: bigint): string {
@@ -168,72 +167,6 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * Notifica por correo a miembros del canal (excluye al remitente). `recipientUserIds` debe calcularse en ChatService.
-   */
-  async notifyChatNewMessage(params: {
-    channelId: string;
-    messageId: string;
-    senderUserId: string;
-    senderName: string;
-    preview: string;
-    recipientUserIds: string[];
-  }): Promise<void> {
-    if ((process.env.NOTIFY_CHAT_EMAIL ?? 'true').trim().toLowerCase() === 'false') {
-      return;
-    }
-    try {
-      const ch = await this.prisma.chatChannel.findUnique({
-        where: { id: params.channelId },
-        select: {
-          name: true,
-          channelType: true,
-          ticket: { select: { id: true, ticketNumber: true } },
-        },
-      });
-
-      let channelLabel = ch?.name?.trim() || 'Chat';
-      if (ch?.ticket) {
-        channelLabel = `Ticket ${formatTicketNumberDisplay(ch.ticket.ticketNumber)}`;
-      }
-
-      const base = appBaseUrl();
-      const ticketPath = ch?.ticket ? `/tickets/${ch.ticket.id}` : '';
-      const chatLinkLine = base ? `Abrir: ${base}${ticketPath}` : '';
-
-      const vars: Record<string, string> = {
-        channelLabel,
-        senderName: params.senderName,
-        preview: params.preview,
-        messageId: params.messageId,
-        chatLinkLine,
-      };
-
-      const fallback = {
-        subject: 'Nuevo mensaje en {{channelLabel}}',
-        body:
-          '{{senderName}} escribió:\n\n{{preview}}\n\nCanal: {{channelLabel}}\n\n{{chatLinkLine}}',
-      };
-      const { subject, body, templateId } = await this.resolveRendering(
-        TEMPLATE.chatNewMessage,
-        fallback,
-        vars,
-      );
-
-      for (const userId of params.recipientUserIds) {
-        if (userId === params.senderUserId) continue;
-        await this.deliverEmailNotification({
-          userId,
-          templateId,
-          subject,
-          bodyPlain: body,
-        });
-      }
-    } catch (e) {
-      this.logger.warn(`notifyChatNewMessage failed channel=${params.channelId}: ${String(e)}`);
-    }
-  }
-
   private ticketLinkLine(ticketId: string): string {
     const link = ticketLink(ticketId);
     return link ? `Ver ticket: ${link}` : '';
@@ -305,6 +238,11 @@ export class NotificationsService {
     subject: string;
     bodyPlain: string;
   }): Promise<void> {
+    /** Solo OTP por correo salvo que se active explícitamente el correo transaccional (tickets, etc.). */
+    if ((process.env.ENABLE_NON_OTP_EMAIL ?? '').trim().toLowerCase() !== 'true') {
+      return;
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: params.userId },
       select: { email: true, isActive: true },
