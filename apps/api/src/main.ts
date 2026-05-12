@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { LogLevel, ValidationPipe } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
 import { validationExceptionFactory } from './common/validation/validation-errors-i18n';
 import { AppModule } from './app.module';
 
@@ -30,7 +31,7 @@ async function bootstrap() {
   );
 
   const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.get('/favicon.ico', (_req, res) => {
+  expressApp.get('/favicon.ico', (_req: Request, res: Response) => {
     res.sendStatus(204);
   });
 
