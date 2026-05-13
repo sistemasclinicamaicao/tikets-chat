@@ -701,14 +701,35 @@ export async function sendChannelMessageWithFile(channelId: string, body: string
   if (t) form.append('body', t);
   form.append('file', file);
   // #region agent log
-  fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v1',hypothesisId:'H1',location:'apps/web/src/lib/api.ts:sendChannelMessageWithFile:request',message:'chat upload request start',data:{channelId,bodyLength:t.length,fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now()})}).catch(()=>{});
+  console.log('DEBUG_CHAT_UPLOAD_START', {
+    runId: 'upload-debug-v2',
+    hypothesisId: 'H5',
+    channelId,
+    bodyLength: t.length,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+  });
+  // #endregion
+  // #region agent log
+  fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v2',hypothesisId:'H1',location:'apps/web/src/lib/api.ts:sendChannelMessageWithFile:request',message:'chat upload request start',data:{channelId,bodyLength:t.length,fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now()})}).catch((error)=>{console.warn('DEBUG_CHAT_UPLOAD_LOG_FAIL',{runId:'upload-debug-v2',hypothesisId:'H5',stage:'request',error:String(error)})});
   // #endregion
   const response = await authFetch(`/chat/channels/${channelId}/messages/with-file`, {
     method: 'POST',
     body: form,
   });
   // #region agent log
-  fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v1',hypothesisId:'H4',location:'apps/web/src/lib/api.ts:sendChannelMessageWithFile:response',message:'chat upload response received',data:{channelId,status:response.status,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now()})}).catch(()=>{});
+  console.log('DEBUG_CHAT_UPLOAD_RESPONSE', {
+    runId: 'upload-debug-v2',
+    hypothesisId: 'H6',
+    channelId,
+    status: response.status,
+    ok: response.ok,
+    contentType: response.headers.get('content-type'),
+  });
+  // #endregion
+  // #region agent log
+  fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v2',hypothesisId:'H4',location:'apps/web/src/lib/api.ts:sendChannelMessageWithFile:response',message:'chat upload response received',data:{channelId,status:response.status,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now()})}).catch((error)=>{console.warn('DEBUG_CHAT_UPLOAD_LOG_FAIL',{runId:'upload-debug-v2',hypothesisId:'H5',stage:'response',error:String(error)})});
   // #endregion
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
