@@ -2,8 +2,11 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
@@ -25,6 +28,7 @@ type VisibleAttachmentRow = {
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
   private readonly onlineCounts = new Map<string, number>();
   private membershipTableReady = false;
 
@@ -919,34 +923,52 @@ export class ChatService {
       this.assertAllowedAttachment(file);
     }
 
-    const msg = await this.prisma.chatMessage.create({
-      data: {
-        channelId,
-        userId,
-        body: text || null,
-      },
-      include: this.messageInclude(),
-    });
-
-    if (file) {
-      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
-      const key = `chat/${channelId}/${msg.id}/${Date.now()}-${safeName}`;
-      await this.storage.putObject(key, file.buffer, file.mimetype);
-      await this.prisma.chatAttachment.create({
+    if (!file) {
+      return this.prisma.chatMessage.create({
         data: {
-          messageId: msg.id,
+          channelId,
+          userId,
+          body: text || null,
+        },
+        include: this.messageInclude(),
+      });
+    }
+
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
+    const key = `chat/${channelId}/${Date.now()}-${randomUUID()}-${safeName}`;
+
+    try {
+      await this.storage.putObject(key, file.buffer, file.mimetype);
+    } catch (error) {
+      const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      this.logger.error(`Chat attachment upload failed for channel ${channelId}: ${reason}`);
+      throw new ServiceUnavailableException('No se pudo subir el archivo al almacenamiento.');
+    }
+
+    const message = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.chatMessage.create({
+        data: {
+          channelId,
+          userId,
+          body: text || null,
+        },
+      });
+      await tx.chatAttachment.create({
+        data: {
+          messageId: created.id,
           storageKey: key,
           originalName: file.originalname.slice(0, 255),
           mimeType: file.mimetype.slice(0, 127),
           sizeBytes: file.size,
         },
       });
-    }
-
-    return this.prisma.chatMessage.findUniqueOrThrow({
-      where: { id: msg.id },
-      include: this.messageInclude(),
+      return tx.chatMessage.findUniqueOrThrow({
+        where: { id: created.id },
+        include: this.messageInclude(),
+      });
     });
+
+    return message;
   }
 
   async forwardAttachments(
