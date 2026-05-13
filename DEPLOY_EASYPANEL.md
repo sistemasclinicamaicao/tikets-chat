@@ -5,15 +5,19 @@
 1. Copia `.env.easypanel.example` a `.env.easypanel` (este nombre está en `.gitignore`; no sube secretos al repositorio).
 2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, QuObjects/S3, correo OTP e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
 3. Para adjuntos de chat usa QuObjects externo, no un MinIO local dentro del compose:
-   - `MINIO_ENDPOINT=https://c11a.myqnapcloud.com:8010` cuando el DDNS apunte a la IP pública correcta y el certificado sea válido para ese dominio.
+   - define **una sola vez** `MINIO_ENDPOINT`;
+   - si EasyPanel debe salir por la IP pública del QNAP, usa `MINIO_ENDPOINT=https://179.60.240.86:8010`;
+   - `http://179.60.240.86:8010` fue rechazado en las pruebas (`socket hang up`), así que no uses `http` para QuObjects;
+   - si luego corriges DDNS/certificado, puedes volver a un dominio como `https://c11a.myqnapcloud.com:8010`.
    - `MINIO_BUCKET=archivos_chat`
    - `MINIO_ACCESS_KEY=<clave de acceso QuObjects>`
    - `MINIO_SECRET_KEY=<clave secreta QuObjects>`
    - `MINIO_REGION=colombia`
    - `STORAGE_SIGNED_URL_EXPIRES_SECONDS=3600`
+   - si el certificado del QNAP no es confiable desde EasyPanel, añade temporalmente `STORAGE_TLS_REJECT_UNAUTHORIZED=false`
 
-> Temporalmente se probó `https://179.60.240.86:8010` con el bucket `archivos_chat`, pero para producción es mejor usar el dominio correcto. Las URLs firmadas se abren en el navegador; si usas una IP con certificado TLS que no coincide, los previews/descargas pueden fallar por certificado.
-> `STORAGE_TLS_REJECT_UNAUTHORIZED=false` solo debe usarse en desarrollo/local para certificados autofirmados. En EasyPanel/producción corrige el DDNS y certificado; no desactives TLS.
+> Con la IP pública `179.60.240.86:8010`, las pruebas del proyecto dieron este resultado: `http` falla y `https` responde con certificado autofirmado. Por eso, si EasyPanel habla directo a la IP, el backend necesita `https://...` y probablemente `STORAGE_TLS_REJECT_UNAUTHORIZED=false` mientras el certificado no sea confiable.
+> Cuando el DDNS/certificado queden correctos, elimina `STORAGE_TLS_REJECT_UNAUTHORIZED=false` y vuelve a un endpoint HTTPS con nombre de host válido.
 
 ## 2) Archivo Compose (raíz del repo)
 
@@ -24,6 +28,8 @@ Equivalente mantenido para quien ejecute compose desde subcarpeta:
 `infrastructure/compose/docker-compose.easypanel.yml`
 
 En EasyPanel, configura el proyecto tipo **Docker Compose** apuntando al archivo en la raíz y las variables (o sube `.env.easypanel` según permita el panel).
+
+Importante: el `docker-compose.yml` de este repo ya propaga `STORAGE_TLS_REJECT_UNAUTHORIZED` al contenedor `api`, así que definir esa variable en EasyPanel sí surtirá efecto en runtime.
 
 ### Pantalla «Fuente → Github» (solo metadatos del repo)
 
@@ -66,6 +72,9 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
    - enviar un video corto y confirmar controles,
    - enviar un PDF/documento y confirmar tarjeta + descarga,
    - recargar la conversación y confirmar que el adjunto sigue asociado al mensaje correcto.
+5. Diagnóstico admin de storage:
+   - `GET /api/v1/admin/runtime-config` debe reflejar el `storage_endpoint`, `storage_hostname`, `storage_protocol` y `storage_tls_relaxed` esperados;
+   - `GET /api/v1/admin/runtime-config/storage/probe` debe confirmar `tcp.ok=true` y, si usas HTTPS con certificado no confiable, te mostrará si el fallo está en `tls` o en `bucket_head`.
 
 ## 5) Notas de operación
 
