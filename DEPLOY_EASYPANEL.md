@@ -3,7 +3,17 @@
 ## 1) Preparar variables
 
 1. Copia `.env.easypanel.example` a `.env.easypanel` (este nombre está en `.gitignore`; no sube secretos al repositorio).
-2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, MinIO, correo OTP e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
+2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, QuObjects/S3, correo OTP e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
+3. Para adjuntos de chat usa QuObjects externo, no un MinIO local dentro del compose:
+   - `MINIO_ENDPOINT=https://c11a.myqnapcloud.com:8010` cuando el DDNS apunte a la IP pública correcta y el certificado sea válido para ese dominio.
+   - `MINIO_BUCKET=archivos_chat`
+   - `MINIO_ACCESS_KEY=<clave de acceso QuObjects>`
+   - `MINIO_SECRET_KEY=<clave secreta QuObjects>`
+   - `MINIO_REGION=colombia`
+   - `STORAGE_SIGNED_URL_EXPIRES_SECONDS=3600`
+
+> Temporalmente se probó `https://179.60.240.86:8010` con el bucket `archivos_chat`, pero para producción es mejor usar el dominio correcto. Las URLs firmadas se abren en el navegador; si usas una IP con certificado TLS que no coincide, los previews/descargas pueden fallar por certificado.
+> `STORAGE_TLS_REJECT_UNAUTHORIZED=false` solo debe usarse en desarrollo/local para certificados autofirmados. En EasyPanel/producción corrige el DDNS y certificado; no desactives TLS.
 
 ## 2) Archivo Compose (raíz del repo)
 
@@ -24,7 +34,7 @@ En EasyPanel, configura el proyecto tipo **Docker Compose** apuntando al archivo
 | Rama | `main` |
 | Ruta de compilación | `/` (raíz; el compose y los Dockerfiles referenciados están bajo `apps/`) |
 
-Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Dockerfile`](Dockerfile) en la **raíz** que construye el **API** (mismo resultado que `apps/api/Dockerfile`). Para el front en un **segundo** servicio EasyPanel, usa [`Dockerfile.web`](Dockerfile.web) en la raíz (build-arg **`VITE_API_ORIGIN`** = URL HTTPS del API, sin barra final). Mejor aún: proyecto **Docker Compose** con [`docker-compose.yml`](docker-compose.yml) para API + web + Postgres + MinIO + Redis.
+Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Dockerfile`](Dockerfile) en la **raíz** que construye el **API** (mismo resultado que `apps/api/Dockerfile`). Para el front en un **segundo** servicio EasyPanel, usa [`Dockerfile.web`](Dockerfile.web) en la raíz (build-arg **`VITE_API_ORIGIN`** = URL HTTPS del API, sin barra final). Mejor aún: proyecto **Docker Compose** con [`docker-compose.yml`](docker-compose.yml) para API + web + Postgres + Redis; los adjuntos van a QuObjects externo.
 
 ## 8) EasyPanel: segundo servicio solo front (`Dockerfile.web`)
 
@@ -51,7 +61,11 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
    - envío/recepción en vivo,
    - presencia consistente (online/offline),
    - DM y grupos.
-4. Adjuntos chat (subida y descarga) en MinIO.
+4. Adjuntos chat (subida, preview y descarga) en QuObjects:
+   - enviar una imagen y confirmar preview,
+   - enviar un video corto y confirmar controles,
+   - enviar un PDF/documento y confirmar tarjeta + descarga,
+   - recargar la conversación y confirmar que el adjunto sigue asociado al mensaje correcto.
 
 ## 5) Notas de operación
 

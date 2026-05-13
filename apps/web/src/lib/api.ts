@@ -313,8 +313,40 @@ export type ChatAttachment = {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
-  storageKey: string;
 };
+
+export type ChatAttachmentPreviewKind = 'image' | 'video' | 'audio' | 'file';
+
+export type ChatAttachmentDownload = {
+  url: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  preview_kind: ChatAttachmentPreviewKind;
+};
+
+export function getChatAttachmentPreviewKind(mimeType: string): ChatAttachmentPreviewKind {
+  const mime = mimeType.toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+export function getChatAttachmentIconKind(mimeType: string, fileName: string) {
+  const mime = mimeType.toLowerCase();
+  const name = fileName.toLowerCase();
+  if (mime === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  if (mime.includes('word') || name.endsWith('.doc') || name.endsWith('.docx')) return 'doc';
+  if (mime.includes('excel') || mime.includes('spreadsheet') || name.endsWith('.xls') || name.endsWith('.xlsx')) {
+    return 'xls';
+  }
+  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z') || /\.(zip|rar|7z)$/i.test(name)) {
+    return 'zip';
+  }
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'generic';
+}
 
 export type ChatMessage = {
   id: string;
@@ -414,6 +446,9 @@ async function refreshAccessIfExpiredOrNear(leewaySeconds = 90): Promise<void> {
 }
 
 export async function authFetch(path: string, init: RequestInit, retry = true): Promise<Response> {
+  if (!path.startsWith('/auth/')) {
+    await refreshAccessIfExpiredOrNear(90);
+  }
   const headers = new Headers(init.headers);
   const token = localStorage.getItem('access_token');
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -443,6 +478,9 @@ async function request<T>(
   retry = true,
   signal?: AbortSignal,
 ): Promise<T> {
+  if (!path.startsWith('/auth/')) {
+    await refreshAccessIfExpiredOrNear(90);
+  }
   let response: Response;
   const headers: Record<string, string> = { ...getAuthHeaders() } as Record<string, string>;
   if (method !== 'GET' && body !== undefined) {
@@ -674,11 +712,32 @@ export async function sendChannelMessageWithFile(channelId: string, body: string
   return (await response.json()) as ChatMessage;
 }
 
+export function forwardChannelAttachments(
+  channelId: string,
+  attachmentIds: string[],
+  body?: string,
+) {
+  return request<ChatMessage>(`/chat/channels/${channelId}/messages/forward-attachments`, 'POST', {
+    attachment_ids: attachmentIds,
+    body: body ?? '',
+  });
+}
+
 export function getAttachmentDownloadUrl(attachmentId: string) {
-  return request<{ url: string; file_name: string; mime_type: string }>(
+  return request<ChatAttachmentDownload>(
     `/chat/attachments/${attachmentId}/download-url`,
     'GET',
   );
+}
+
+export async function fetchAttachmentBlob(attachmentId: string) {
+  const response = await authFetch(`/chat/attachments/${attachmentId}/content`, { method: 'GET' });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    const message = Array.isArray(data.message) ? data.message.join('; ') : data.message;
+    throw new ApiError(message ?? 'Request failed', response.status, data.message);
+  }
+  return response.blob();
 }
 
 export function markChannelRead(channelId: string) {

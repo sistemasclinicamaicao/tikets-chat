@@ -17,7 +17,7 @@ Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md).
 
 1. En GitHub: repo `sistemasclinicamaicao/tikets-chat`, rama `main`.
 2. En EasyPanel: proyecto **Docker Compose** (recomendado), repositorio conectado y **archivo compose** `docker-compose.yml` en la **raíz** del clon.
-3. Variables de entorno: copia [`.env.easypanel.example`](.env.easypanel.example) y define al menos `VITE_API_ORIGIN` (URL HTTPS pública del API para el navegador), JWT, PostgreSQL, Redis y MinIO. Detalle: [DEPLOY_EASYPANEL.md](DEPLOY_EASYPANEL.md).
+3. Variables de entorno: copia [`.env.easypanel.example`](.env.easypanel.example) y define al menos `VITE_API_ORIGIN` (URL HTTPS pública del API para el navegador), JWT, PostgreSQL, Redis y QuObjects/S3. Detalle: [DEPLOY_EASYPANEL.md](DEPLOY_EASYPANEL.md).
 4. **Fuente → Github**, **Ruta de compilación** `/` para compose en la raíz. Si usas **un Dockerfile por servicio** desde la raíz: API = [`Dockerfile`](Dockerfile); front = [`Dockerfile.web`](Dockerfile.web) con build-arg `VITE_API_ORIGIN` (URL HTTPS del API). (Si el contexto fuera solo `apps/web`, ahí sí el Dockerfile es `apps/web/Dockerfile`.)
 
 ## Requisitos

@@ -4,18 +4,21 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   addGroupMember,
   createDmChannel,
+  fetchAttachmentBlob,
+  forwardChannelAttachments,
   createGroupChannel,
   getChannelMessages,
   getChatChannels,
   getChatPresence,
   getChatUsers,
   getGroupMembers,
+  getChatAttachmentIconKind,
+  getChatAttachmentPreviewKind,
   leaveGroupChannel,
   markChannelRead,
   removeGroupMember,
   sendChannelMessage,
   sendChannelMessageWithFile,
-  getAttachmentDownloadUrl,
   softDeleteChatConversation,
 } from '../lib/api';
 import { ensureRealtimeConnected, subscribeRealtimeStatus } from '../lib/chatRealtime';
@@ -29,7 +32,7 @@ import {
   requestDesktopNotificationPermission,
   triggerNudgeDeviceVibrate,
 } from '../lib/chatMessageAlerts';
-import type { ChatMessage, GroupMember } from '../lib/api';
+import type { ChatAttachment, ChatMessage, GroupMember } from '../lib/api';
 import type { EmojiClickData, Theme } from 'emoji-picker-react';
 
 const LazyEmojiPicker = lazy(() => import('emoji-picker-react'));
@@ -39,6 +42,7 @@ const MESSAGES_PAGE_SIZE = 50;
 type Channel = Awaited<ReturnType<typeof getChatChannels>>[number];
 type Message = ChatMessage;
 type ChatUser = Awaited<ReturnType<typeof getChatUsers>>[number];
+type ForwardTarget = { kind: 'channel' | 'user'; id: string };
 
 /** Tipo título sutíl si el dato viene en mayúsculas (típico en datos maestros). */
 function formatDisplayName(raw: string | null | undefined): string {
@@ -118,6 +122,310 @@ function formatFileSize(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const CHAT_FILE_LIMITS_MB = {
+  image: 10,
+  video: 100,
+  file: 25,
+} as const;
+
+const CHAT_ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/ogg',
+  'audio/webm',
+  'audio/mp4',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/x-rar-compressed',
+  'application/vnd.rar',
+  'application/x-7z-compressed',
+]);
+
+const CLIPBOARD_FILE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+};
+
+function triggerBrowserDownload(url: string, fileName: string) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function downloadChatAttachment(attachment: Pick<ChatAttachment, 'id' | 'originalName'>) {
+  const blob = await fetchAttachmentBlob(attachment.id);
+  const url = URL.createObjectURL(blob);
+  try {
+    triggerBrowserDownload(url, attachment.originalName);
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+function normalizeClipboardFile(file: File) {
+  if (file.name.trim()) return file;
+  const ext = CLIPBOARD_FILE_EXTENSIONS[file.type] ?? 'bin';
+  const safeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return new File([file], `pegado-${safeStamp}.${ext}`, {
+    type: file.type || 'application/octet-stream',
+    lastModified: Date.now(),
+  });
+}
+
+function validateChatFile(file: File): string | null {
+  const mime = file.type.toLowerCase();
+  if (!CHAT_ALLOWED_MIME.has(mime)) {
+    return 'Tipo de archivo no permitido.';
+  }
+  const kind = getChatAttachmentPreviewKind(mime);
+  const maxMb = kind === 'image' ? CHAT_FILE_LIMITS_MB.image : kind === 'video' ? CHAT_FILE_LIMITS_MB.video : CHAT_FILE_LIMITS_MB.file;
+  if (file.size > maxMb * 1024 * 1024) {
+    return `Archivo muy grande. Máximo ${maxMb} MB.`;
+  }
+  return null;
+}
+
+function ChatAttachmentView({
+  attachment,
+  onPreviewImage,
+}: {
+  attachment: ChatAttachment;
+  onPreviewImage?: (attachment: ChatAttachment) => void;
+}) {
+  const previewKind = getChatAttachmentPreviewKind(attachment.mimeType);
+  const iconKind = getChatAttachmentIconKind(attachment.mimeType, attachment.originalName);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function ensureObjectUrl() {
+    if (objectUrl) return objectUrl;
+    setLoading(true);
+    try {
+      const blob = await fetchAttachmentBlob(attachment.id);
+      const next = URL.createObjectURL(blob);
+      setObjectUrl(next);
+      return next;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (previewKind !== 'image' && previewKind !== 'video' && previewKind !== 'audio') return;
+    void ensureObjectUrl().catch(() => undefined);
+  }, [attachment.id, previewKind]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
+
+  async function openDownload() {
+    try {
+      if (objectUrl) {
+        triggerBrowserDownload(objectUrl, attachment.originalName);
+        return;
+      }
+      await downloadChatAttachment(attachment);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const meta = [formatFileSize(attachment.sizeBytes), attachment.mimeType].filter(Boolean).join(' · ');
+
+  if (previewKind === 'image') {
+    return (
+      <article className="chat-attachment-card chat-attachment-card--media">
+        <button
+          type="button"
+          className="chat-attachment-preview-btn"
+          onClick={() => onPreviewImage?.(attachment)}
+          aria-label={`Abrir vista previa de ${attachment.originalName}`}
+        >
+          {objectUrl ? (
+            <img className="chat-attachment-preview chat-attachment-preview--image" src={objectUrl} alt={attachment.originalName} loading="lazy" />
+          ) : (
+            <div className="chat-attachment-preview-placeholder">{loading ? 'Cargando imagen…' : 'Imagen'}</div>
+          )}
+        </button>
+        <div className="chat-attachment-card__body">
+          <span className="chat-attachment-card__name" title={attachment.originalName}>{attachment.originalName}</span>
+          <span className="chat-attachment-meta">{meta}</span>
+          <button type="button" className="chat-attachment-download" onClick={() => void openDownload()}>
+            Descargar
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  if (previewKind === 'video') {
+    return (
+      <article className="chat-attachment-card chat-attachment-card--media">
+        {objectUrl ? (
+          <video className="chat-attachment-preview chat-attachment-preview--video" controls preload="metadata" src={objectUrl} />
+        ) : (
+          <div className="chat-attachment-preview-placeholder">{loading ? 'Cargando video…' : 'Video'}</div>
+        )}
+        <div className="chat-attachment-card__body">
+          <span className="chat-attachment-card__name" title={attachment.originalName}>{attachment.originalName}</span>
+          <span className="chat-attachment-meta">{meta}</span>
+          <button type="button" className="chat-attachment-download" onClick={() => void openDownload()}>
+            Descargar
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="chat-attachment-card">
+      <span className={`chat-attachment-thumb chat-attachment-thumb--${iconKind}`} aria-hidden="true">
+        {iconKind.toUpperCase()}
+      </span>
+      <div className="chat-attachment-card__body">
+        <span className="chat-attachment-card__name" title={attachment.originalName}>{attachment.originalName}</span>
+        <span className="chat-attachment-meta">{meta}</span>
+      </div>
+      <button type="button" className="chat-attachment-download" onClick={() => void openDownload()}>
+        Descargar
+      </button>
+    </article>
+  );
+}
+
+type MessageActionMenuProps = {
+  message: Message;
+  onCopyText: () => void;
+  onDownloadAttachments: () => void;
+  onForwardAttachments: () => void;
+};
+
+function MessageActionMenu({
+  message,
+  onCopyText,
+  onDownloadAttachments,
+  onForwardAttachments,
+}: MessageActionMenuProps) {
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  const hasText = Boolean(message.body?.trim());
+  const hasAttachments = (message.attachments?.length ?? 0) > 0;
+
+  useEffect(() => {
+    function onPointerDown(ev: PointerEvent) {
+      const el = menuRef.current;
+      if (!el?.open) return;
+      const t = ev.target;
+      if (t instanceof Node && el.contains(t)) return;
+      el.open = false;
+    }
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, []);
+
+  if (!hasText && !hasAttachments) return null;
+
+  function closeMenu() {
+    const el = menuRef.current;
+    if (el) el.open = false;
+  }
+
+  return (
+    <details
+      ref={menuRef}
+      className="chat-message-menu"
+      onToggle={(e) => {
+        if ((e.target as HTMLDetailsElement).open) {
+          document.querySelectorAll('.chat-message-menu[open]').forEach((node) => {
+            if (node !== menuRef.current) node.removeAttribute('open');
+          });
+        }
+      }}
+    >
+      <summary className="chat-message-menu__trigger" aria-label="Opciones del mensaje">
+        ···
+      </summary>
+      <ul className="chat-message-menu__list" role="menu">
+        {hasText ? (
+          <li role="none">
+            <button
+              type="button"
+              className="chat-channel-menu__item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onCopyText();
+              }}
+            >
+              Copiar texto
+            </button>
+          </li>
+        ) : null}
+        {hasAttachments ? (
+          <li role="none">
+            <button
+              type="button"
+              className="chat-channel-menu__item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onDownloadAttachments();
+              }}
+            >
+              Descargar adjuntos
+            </button>
+          </li>
+        ) : null}
+        {hasAttachments ? (
+          <li role="none">
+            <button
+              type="button"
+              className="chat-channel-menu__item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onForwardAttachments();
+              }}
+            >
+              Reenviar
+            </button>
+          </li>
+        ) : null}
+      </ul>
+    </details>
+  );
 }
 
 function maskEmail(email: string | null | undefined) {
@@ -416,6 +724,15 @@ export function ChatPage() {
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFilePreviewUrl, setPendingFilePreviewUrl] = useState<string | null>(null);
+  const [forwardSourceMessage, setForwardSourceMessage] = useState<Message | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<ForwardTarget | null>(null);
+  const [forwardQuery, setForwardQuery] = useState('');
+  const [forwarding, setForwarding] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
+  const [previewAttachmentLoading, setPreviewAttachmentLoading] = useState(false);
+  const [previewAttachmentError, setPreviewAttachmentError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const composerSelStartRef = useRef(0);
@@ -429,8 +746,31 @@ export function ChatPage() {
   const hasMoreOlderRef = useRef(false);
   const loadMessagesSeqRef = useRef(0);
   const loadedChannelIdRef = useRef('');
+  const forwardDialogRef = useRef<HTMLDialogElement>(null);
+  const previewDialogRef = useRef<HTMLDialogElement>(null);
 
   const currentUserId = localStorage.getItem('user_id') ?? '';
+
+  function flashComposerHint(message: string, ms = 4000) {
+    setComposerHint(message);
+    window.setTimeout(() => setComposerHint(''), ms);
+  }
+
+  function applyPendingFileSelection(file: File | null) {
+    if (!file) {
+      setPendingFile(null);
+      return true;
+    }
+    const validation = validateChatFile(file);
+    if (validation) {
+      setPendingFile(null);
+      flashComposerHint(validation, 5000);
+      return false;
+    }
+    setComposerHint('');
+    setPendingFile(file);
+    return true;
+  }
 
   function emitSyncRooms() {
     socketRef.current?.emit('chat:sync-rooms');
@@ -897,6 +1237,7 @@ export function ChatPage() {
     function onVisibility() {
       setNotifPermission(getDesktopNotificationPermission());
       if (document.visibilityState !== 'visible') return;
+      if (!localStorage.getItem('access_token')) return;
       socketRef.current?.emit('chat:sync-rooms');
       void Promise.all([getChatUsers(), getChatPresence()])
         .then(([allUsers, presence]) => {
@@ -948,15 +1289,6 @@ export function ChatPage() {
 
   const activeChannel = channels.find((item) => item.id === activeChannelId);
 
-  async function openAttachmentDownload(attachmentId: string) {
-    try {
-      const { url } = await getAttachmentDownloadUrl(attachmentId);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch {
-      /* ignore */
-    }
-  }
-
   useEffect(() => {
     if (!activeChannelId || activeChannel?.channel_type !== 'group') {
       setGroupMembers([]);
@@ -986,6 +1318,69 @@ export function ChatPage() {
   }, [activeChannelId]);
 
   useEffect(() => {
+    const dialog = forwardDialogRef.current;
+    if (!dialog) return;
+    if (forwardSourceMessage) {
+      if (!dialog.open) dialog.showModal();
+      return;
+    }
+    if (dialog.open) dialog.close();
+  }, [forwardSourceMessage]);
+
+  useEffect(() => {
+    const dialog = previewDialogRef.current;
+    if (!dialog) return;
+    if (previewAttachment) {
+      if (!dialog.open) dialog.showModal();
+      return;
+    }
+    if (dialog.open) dialog.close();
+  }, [previewAttachment]);
+
+  useEffect(() => {
+    if (!previewAttachment) {
+      setPreviewAttachmentUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setPreviewAttachmentLoading(false);
+      setPreviewAttachmentError('');
+      return;
+    }
+
+    let cancelled = false;
+    let nextUrl: string | null = null;
+    setPreviewAttachmentUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPreviewAttachmentLoading(true);
+    setPreviewAttachmentError('');
+
+    void (async () => {
+      try {
+        const blob = await fetchAttachmentBlob(previewAttachment.id);
+        if (cancelled) return;
+        nextUrl = URL.createObjectURL(blob);
+        setPreviewAttachmentUrl(nextUrl);
+      } catch {
+        if (!cancelled) {
+          setPreviewAttachmentError('No se pudo cargar la imagen.');
+        }
+      } finally {
+        if (!cancelled) {
+          setPreviewAttachmentLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (nextUrl) URL.revokeObjectURL(nextUrl);
+    };
+  }, [previewAttachment]);
+
+  useEffect(() => {
     if (!emojiPickerOpen) return;
     function onPointerDown(e: PointerEvent) {
       const pop = emojiPopoverRef.current;
@@ -1010,6 +1405,21 @@ export function ChatPage() {
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [emojiPickerOpen]);
+
+  useEffect(() => {
+    if (!pendingFile) {
+      setPendingFilePreviewUrl(null);
+      return;
+    }
+    const kind = getChatAttachmentPreviewKind(pendingFile.type || 'application/octet-stream');
+    if (kind !== 'image' && kind !== 'video') {
+      setPendingFilePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(pendingFile);
+    setPendingFilePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingFile]);
 
   async function onSend(event?: FormEvent) {
     event?.preventDefault();
@@ -1049,17 +1459,20 @@ export function ChatPage() {
     if (fileToSend) {
       try {
         const msg = normalizeMessage(await sendChannelMessageWithFile(activeChannelId, body, fileToSend));
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
         await markChannelRead(activeChannelId);
         updateChannelPreview(msg);
-      } catch {
-        /* ignore */
+      } catch (e) {
+        setPendingFile(fileToSend);
+        const message = e instanceof Error ? e.message : 'No se pudo subir el archivo.';
+        flashComposerHint(message, 5000);
+        return;
       }
     } else if (socketRef.current?.connected) {
       socketRef.current.emit('chat:send', { channel_id: activeChannelId, body });
     } else {
       const msg = normalizeMessage(await sendChannelMessage(activeChannelId, body));
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       await markChannelRead(activeChannelId);
       updateChannelPreview(msg);
     }
@@ -1071,7 +1484,7 @@ export function ChatPage() {
     composerSelEndRef.current = el.selectionEnd;
   }
 
-  function insertEmoji(emoji: string) {
+  function insertComposerText(insertedText: string) {
     const ta = composerTextareaRef.current;
     let start = composerSelStartRef.current;
     let end = composerSelEndRef.current;
@@ -1079,8 +1492,8 @@ export function ChatPage() {
       start = ta.selectionStart;
       end = ta.selectionEnd;
     }
-    const nextPos = start + emoji.length;
-    setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+    const nextPos = start + insertedText.length;
+    setText((prev) => prev.slice(0, start) + insertedText + prev.slice(end));
     composerSelStartRef.current = nextPos;
     composerSelEndRef.current = nextPos;
     requestAnimationFrame(() => {
@@ -1095,11 +1508,33 @@ export function ChatPage() {
     });
   }
 
+  function insertEmoji(emoji: string) {
+    insertComposerText(emoji);
+  }
+
   function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void onSend();
     }
+  }
+
+  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const clipboard = e.clipboardData;
+    const pastedFile =
+      Array.from(clipboard.items)
+        .find((item) => item.kind === 'file')
+        ?.getAsFile() ?? clipboard.files?.[0] ?? null;
+    if (!pastedFile) return;
+
+    e.preventDefault();
+    const normalizedFile = normalizeClipboardFile(pastedFile);
+    const pastedText = clipboard.getData('text/plain');
+    if (pastedText) {
+      insertComposerText(pastedText);
+    }
+    if (!applyPendingFileSelection(normalizedFile)) return;
+    flashComposerHint(`Archivo listo para enviar: ${normalizedFile.name}`);
   }
 
   function onComposerChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -1259,12 +1694,105 @@ export function ChatPage() {
     });
   }
 
+  async function copyMessageText(message: Message) {
+    const body = (message.body ?? '').trim();
+    if (!body) return;
+    try {
+      await navigator.clipboard.writeText(body);
+      flashComposerHint('Texto copiado.');
+    } catch {
+      flashComposerHint('No se pudo copiar el texto.');
+    }
+  }
+
+  async function downloadMessageAttachments(message: Message) {
+    const attachments = message.attachments ?? [];
+    if (attachments.length === 0) return;
+    try {
+      for (const attachment of attachments) {
+        await downloadChatAttachment(attachment);
+      }
+      flashComposerHint(
+        attachments.length === 1 ? 'Adjunto descargado.' : `${attachments.length} adjuntos descargados.`,
+      );
+    } catch {
+      flashComposerHint('No se pudieron descargar los adjuntos.');
+    }
+  }
+
+  function closeForwardDialog() {
+    const dialog = forwardDialogRef.current;
+    if (dialog?.open) dialog.close();
+    setForwardSourceMessage(null);
+    setForwardTarget(null);
+    setForwardQuery('');
+    setForwarding(false);
+  }
+
+  function openForwardDialog(message: Message) {
+    if (!message.attachments?.length) return;
+    setForwardSourceMessage(message);
+    setForwardTarget(null);
+    setForwardQuery('');
+  }
+
+  function closePreviewDialog() {
+    const dialog = previewDialogRef.current;
+    if (dialog?.open) dialog.close();
+    setPreviewAttachment(null);
+    setPreviewAttachmentError('');
+    setPreviewAttachmentLoading(false);
+  }
+
+  function openPreviewDialog(attachment: ChatAttachment) {
+    if (getChatAttachmentPreviewKind(attachment.mimeType) !== 'image') return;
+    setPreviewAttachment(attachment);
+  }
+
+  async function submitForwardAttachments() {
+    if (!forwardSourceMessage || !forwardTarget) return;
+    try {
+      setForwarding(true);
+      let targetChannelId = forwardTarget.id;
+      if (forwardTarget.kind === 'user') {
+        const dm = await createDmChannel(forwardTarget.id);
+        targetChannelId = dm.id;
+      }
+      const forwarded = normalizeMessage(
+        await forwardChannelAttachments(
+          targetChannelId,
+          forwardSourceMessage.attachments.map((attachment) => attachment.id),
+          forwardSourceMessage.body ?? '',
+        ),
+      );
+      if (targetChannelId === activeChannelIdRef.current) {
+        setMessages((prev) => (prev.some((m) => m.id === forwarded.id) ? prev : [...prev, forwarded]));
+      }
+      if (forwardTarget.kind === 'user') {
+        void loadChannels(false).catch(() => undefined);
+      }
+      flashComposerHint('Adjunto reenviado.');
+      closeForwardDialog();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'No se pudo reenviar el adjunto.';
+      flashComposerHint(message, 5000);
+      setForwarding(false);
+    }
+  }
+
   const chatSearchNorm = chatSearch.trim().toLowerCase();
   const filteredChannels = channels.filter((channel) =>
     `${channel.channel_type} ${channel.name} ${channel.last_message?.body ?? ''} ${channel.last_message?.author_name ?? ''}`
       .toLowerCase()
       .includes(chatSearchNorm),
   );
+  const forwardQueryNorm = normalizeForSearch(forwardQuery);
+  const forwardCandidateChannels = channels.filter((channel) => {
+    if (!forwardQueryNorm) return true;
+    return normalizeForSearch(
+      `${channel.name} ${channel.channel_type} ${channel.last_message?.body ?? ''} ${channel.last_message?.author_name ?? ''}`,
+    ).includes(forwardQueryNorm);
+  });
   /** Sin búsqueda: ocultar archivados locales. Con búsqueda: mostrar coincidencias aunque estén archivados. */
   const activeChannels =
     chatSearchNorm.length > 0
@@ -1280,6 +1808,10 @@ export function ChatPage() {
     if (bo !== ao) return bo - ao;
     return a.name.localeCompare(b.name);
   });
+  const forwardCandidateUsers = sortedPeople
+    .filter((user) => user.id !== currentUserId)
+    .filter((user) => matchesPersonInviteSearch(user, forwardQuery))
+    .slice(0, forwardQueryNorm ? 16 : 8);
 
   const filteredPeople = sortedPeople.filter((u) => {
     const q = chatSearchNorm;
@@ -1835,6 +2367,164 @@ export function ChatPage() {
           </dialog>
         ) : null}
 
+        {forwardSourceMessage ? (
+          <dialog
+            ref={forwardDialogRef}
+            className="chat-group-dialog chat-forward-dialog"
+            aria-labelledby="chat-forward-dialog-title"
+            onClose={closeForwardDialog}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeForwardDialog();
+            }}
+          >
+            <div className="chat-group-dialog__inner">
+              <header className="chat-group-dialog__head">
+                <h3 id="chat-forward-dialog-title" className="chat-group-dialog__title">
+                  Reenviar adjunto
+                </h3>
+                <p className="chat-group-dialog__sub">
+                  {forwardSourceMessage.attachments.length} adjunto
+                  {forwardSourceMessage.attachments.length === 1 ? '' : 's'}
+                </p>
+              </header>
+              <div className="chat-group-dialog__body">
+                <div className="chat-group-manage chat-group-manage--in-dialog">
+                  <p className="chat-group-manage__summary">
+                    Selecciona un chat existente o busca una persona del directorio para reenviar el archivo sin duplicarlo en almacenamiento.
+                  </p>
+                  <div className="chat-forward-dialog__source">
+                    <strong>{formatDisplayName(forwardSourceMessage.user.name)}</strong>
+                    <span>{forwardSourceMessage.attachments.map((attachment) => attachment.originalName).join(', ')}</span>
+                  </div>
+                  <input
+                    className="chat-group-manage__search"
+                    value={forwardQuery}
+                    onChange={(e) => setForwardQuery(e.target.value)}
+                    placeholder="Buscar chat o persona…"
+                    aria-label="Buscar chat o persona para reenviar adjunto"
+                  />
+                  <div className="chat-forward-dialog__sections">
+                    {forwardCandidateChannels.length > 0 ? (
+                      <section className="chat-forward-dialog__section">
+                        <h4 className="chat-forward-dialog__section-title">Chats existentes</h4>
+                        <ul className="chat-group-manage__list chat-forward-dialog__list">
+                          {forwardCandidateChannels.map((channel) => (
+                            <li key={channel.id}>
+                              <button
+                                type="button"
+                                className={`chat-forward-dialog__target${
+                                  forwardTarget?.kind === 'channel' && forwardTarget.id === channel.id
+                                    ? ' chat-forward-dialog__target--selected'
+                                    : ''
+                                }`}
+                                onClick={() => setForwardTarget({ kind: 'channel', id: channel.id })}
+                              >
+                                <span className="chat-forward-dialog__target-title-row">
+                                  <span>{formatDisplayName(channel.name)}</span>
+                                  <span className="chat-forward-dialog__badge">Chat</span>
+                                </span>
+                                <small>
+                                  {channel.channel_type === 'dm'
+                                    ? 'Conversación directa'
+                                    : channel.channel_type === 'group'
+                                      ? 'Grupo'
+                                      : 'Ticket'}
+                                </small>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
+                    {forwardCandidateUsers.length > 0 ? (
+                      <section className="chat-forward-dialog__section">
+                        <h4 className="chat-forward-dialog__section-title">Personas</h4>
+                        <ul className="chat-group-manage__list chat-forward-dialog__list">
+                          {forwardCandidateUsers.map((user) => (
+                            <li key={user.id}>
+                              <button
+                                type="button"
+                                className={`chat-forward-dialog__target chat-forward-dialog__target--user${
+                                  forwardTarget?.kind === 'user' && forwardTarget.id === user.id
+                                    ? ' chat-forward-dialog__target--selected'
+                                    : ''
+                                }`}
+                                onClick={() => setForwardTarget({ kind: 'user', id: user.id })}
+                              >
+                                <span className="chat-forward-dialog__target-title-row">
+                                  <span>{formatDisplayName(user.name)}</span>
+                                  <span className="chat-forward-dialog__badge chat-forward-dialog__badge--user">Persona</span>
+                                </span>
+                                <small>
+                                  {user.employeeId}
+                                  {user.email ? ` · ${maskEmail(user.email)}` : ''}
+                                </small>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
+                    {forwardCandidateChannels.length === 0 && forwardCandidateUsers.length === 0 ? (
+                      <p className="chat-forward-dialog__empty">No hay chats ni personas que coincidan con la búsqueda.</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <footer className="chat-group-dialog__foot">
+                <button type="button" className="chat-ghost-btn chat-group-dialog__close-btn" onClick={closeForwardDialog}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="chat-ghost-btn"
+                  disabled={!forwardTarget || forwarding}
+                  onClick={() => void submitForwardAttachments()}
+                >
+                  {forwarding ? 'Reenviando…' : 'Reenviar'}
+                </button>
+              </footer>
+            </div>
+          </dialog>
+        ) : null}
+
+        {previewAttachment ? (
+          <dialog
+            ref={previewDialogRef}
+            className="chat-image-viewer"
+            aria-labelledby="chat-image-viewer-title"
+            onClose={closePreviewDialog}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closePreviewDialog();
+            }}
+          >
+            <div className="chat-image-viewer__inner">
+              <header className="chat-image-viewer__head">
+                <div className="chat-image-viewer__meta">
+                  <h3 id="chat-image-viewer-title" className="chat-image-viewer__title">
+                    {previewAttachment.originalName}
+                  </h3>
+                  <p className="chat-image-viewer__sub">
+                    {formatFileSize(previewAttachment.sizeBytes)} · {previewAttachment.mimeType}
+                  </p>
+                </div>
+                <button type="button" className="chat-ghost-btn chat-image-viewer__close" onClick={closePreviewDialog}>
+                  Cerrar
+                </button>
+              </header>
+              <div className="chat-image-viewer__body">
+                {previewAttachmentLoading ? (
+                  <p className="chat-image-viewer__status">Cargando imagen…</p>
+                ) : previewAttachmentError ? (
+                  <p className="chat-image-viewer__status">{previewAttachmentError}</p>
+                ) : previewAttachmentUrl ? (
+                  <img className="chat-image-viewer__media" src={previewAttachmentUrl} alt={previewAttachment.originalName} />
+                ) : null}
+              </div>
+            </div>
+          </dialog>
+        ) : null}
+
         <div
           ref={messagesScrollRef}
           className="chat-messages"
@@ -1858,22 +2548,23 @@ export function ChatPage() {
                 >
                   <header className="chat-bubble__head">
                     <span className="chat-bubble__author">{formatDisplayName(message.user.name)}</span>
-                    <time className="chat-bubble__time" dateTime={message.createdAt}>
-                      {formatMessageTimestamp(message.createdAt)}
-                    </time>
+                    <div className="chat-bubble__head-actions">
+                      <time className="chat-bubble__time" dateTime={message.createdAt}>
+                        {formatMessageTimestamp(message.createdAt)}
+                      </time>
+                      <MessageActionMenu
+                        message={message}
+                        onCopyText={() => void copyMessageText(message)}
+                        onDownloadAttachments={() => void downloadMessageAttachments(message)}
+                        onForwardAttachments={() => openForwardDialog(message)}
+                      />
+                    </div>
                   </header>
                   {atts.length > 0 ? (
                     <ul className="chat-attachments">
                       {atts.map((att) => (
                         <li key={att.id} className="chat-attachments__item">
-                          <button
-                            type="button"
-                            className="chat-attachment-link"
-                            onClick={() => void openAttachmentDownload(att.id)}
-                          >
-                            {att.originalName}
-                          </button>
-                          <span className="chat-attachment-meta">{formatFileSize(att.sizeBytes)}</span>
+                          <ChatAttachmentView attachment={att} onPreviewImage={openPreviewDialog} />
                         </li>
                       ))}
                     </ul>
@@ -1902,7 +2593,7 @@ export function ChatPage() {
             tabIndex={-1}
             onChange={(e) => {
               const f = e.target.files?.[0] ?? null;
-              setPendingFile(f);
+              applyPendingFileSelection(f);
               e.target.value = '';
             }}
           />
@@ -2021,6 +2712,7 @@ export function ChatPage() {
             onKeyUp={(e) => syncComposerSelection(e.currentTarget)}
             onClick={(e) => syncComposerSelection(e.currentTarget)}
             onKeyDown={onComposerKeyDown}
+            onPaste={onComposerPaste}
             placeholder="Escribe un mensaje · Enter envía · Shift+Enter nueva línea"
             rows={3}
             disabled={!activeChannelId}
@@ -2035,15 +2727,33 @@ export function ChatPage() {
           </button>
           {pendingFile ? (
             <div className="chat-pending-file">
+              {pendingFilePreviewUrl ? (
+                getChatAttachmentPreviewKind(pendingFile.type) === 'video' ? (
+                  <video className="chat-pending-file__preview" src={pendingFilePreviewUrl} muted preload="metadata" />
+                ) : (
+                  <img className="chat-pending-file__preview" src={pendingFilePreviewUrl} alt="" />
+                )
+              ) : (
+                <span
+                  className={`chat-pending-file__icon chat-attachment-thumb--${getChatAttachmentIconKind(
+                    pendingFile.type,
+                    pendingFile.name,
+                  )}`}
+                  aria-hidden="true"
+                >
+                  {getChatAttachmentIconKind(pendingFile.type, pendingFile.name).toUpperCase()}
+                </span>
+              )}
               <span className="chat-pending-file__name" title={pendingFile.name}>
                 {pendingFile.name}
+                <small>{formatFileSize(pendingFile.size)}</small>
               </span>
               <button
                 type="button"
                 className="chat-pending-file__clear"
                 aria-label="Quitar archivo"
                 onClick={() => {
-                  setPendingFile(null);
+                  applyPendingFileSelection(null);
                   if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
               >

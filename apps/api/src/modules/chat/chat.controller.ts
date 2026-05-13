@@ -7,18 +7,33 @@ import {
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import type { Readable } from 'stream';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { AddGroupMemberDto } from './dto/add-group-member.dto';
 import { CreateGroupDto } from './dto/create-group.dto';
+import { ForwardAttachmentsDto } from './dto/forward-attachments.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
+
+function maxChatAttachmentUploadBytes() {
+  const videoMaxMb = Number.parseInt(process.env.CHAT_ATTACHMENT_VIDEO_MAX_MB ?? '', 10);
+  const maxMb = Number.isFinite(videoMaxMb) && videoMaxMb > 0 ? videoMaxMb : 100;
+  return maxMb * 1024 * 1024;
+}
+
+function contentDispositionFileName(name: string) {
+  return name.replace(/["\r\n]/g, '_');
+}
 
 @Controller('chat')
 @UseGuards(JwtAuthGuard)
@@ -94,6 +109,19 @@ export class ChatController {
     return this.chatService.getAttachmentDownloadUrl(user.userId, attachmentId);
   }
 
+  @Get('attachments/:attachmentId/content')
+  async getAttachmentContent(
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: { userId: string },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { row, object } = await this.chatService.getAttachmentContent(user.userId, attachmentId);
+    res.setHeader('Content-Type', row.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Length', String(row.sizeBytes));
+    res.setHeader('Content-Disposition', `inline; filename="${contentDispositionFileName(row.originalName)}"`);
+    return new StreamableFile(object.Body as Readable);
+  }
+
   @Post('dm/:userId')
   async createDm(@CurrentUser() me: { userId: string }, @Param('userId') otherUserId: string) {
     const channel = await this.chatService.getOrCreateDm(me.userId, otherUserId);
@@ -136,7 +164,7 @@ export class ChatController {
   }
 
   @Post('channels/:channelId/messages/with-file')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxChatAttachmentUploadBytes() } }))
   async sendMessageWithFile(
     @Param('channelId') channelId: string,
     @CurrentUser() user: { userId: string },
@@ -155,6 +183,22 @@ export class ChatController {
             size: file.size,
           }
         : undefined,
+    );
+    this.chatGateway.broadcastChannelMessage(channelId, message);
+    return message;
+  }
+
+  @Post('channels/:channelId/messages/forward-attachments')
+  async forwardAttachments(
+    @Param('channelId') channelId: string,
+    @Body() dto: ForwardAttachmentsDto,
+    @CurrentUser() user: { userId: string },
+  ) {
+    const message = await this.chatService.forwardAttachments(
+      channelId,
+      user.userId,
+      dto.attachment_ids,
+      dto.body,
     );
     this.chatGateway.broadcastChannelMessage(channelId, message);
     return message;

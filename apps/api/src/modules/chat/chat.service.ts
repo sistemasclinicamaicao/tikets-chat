@@ -11,6 +11,18 @@ import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
+type ChatAttachmentKind = 'image' | 'video' | 'audio' | 'file';
+type VisibleAttachmentRow = {
+  id: string;
+  messageId: string;
+  channelId: string;
+  storageKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+};
+
 @Injectable()
 export class ChatService {
   private readonly onlineCounts = new Map<string, number>();
@@ -20,6 +32,67 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
   ) {}
+
+  private parsePositiveInt(raw: string | undefined, fallback: number): number {
+    const n = Number.parseInt(raw ?? '', 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  }
+
+  private attachmentLimitBytes(kind: ChatAttachmentKind): number {
+    const mb =
+      kind === 'image'
+        ? this.parsePositiveInt(process.env.CHAT_ATTACHMENT_IMAGE_MAX_MB, 10)
+        : kind === 'video'
+          ? this.parsePositiveInt(process.env.CHAT_ATTACHMENT_VIDEO_MAX_MB, 100)
+          : this.parsePositiveInt(process.env.CHAT_ATTACHMENT_FILE_MAX_MB, 25);
+    return mb * 1024 * 1024;
+  }
+
+  private previewKindForMime(mimeType: string): ChatAttachmentKind {
+    const m = (mimeType || 'application/octet-stream').toLowerCase();
+    if (m.startsWith('image/')) return 'image';
+    if (m.startsWith('video/')) return 'video';
+    if (m.startsWith('audio/')) return 'audio';
+    return 'file';
+  }
+
+  private assertAllowedAttachment(file: { originalname: string; mimetype: string; size: number }) {
+    const mime = (file.mimetype || 'application/octet-stream').toLowerCase();
+    const kind = this.previewKindForMime(mime);
+    const allowedDocuments = new Set([
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain',
+      'text/csv',
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/x-rar-compressed',
+      'application/vnd.rar',
+      'application/x-7z-compressed',
+    ]);
+    const allowed =
+      kind === 'image'
+        ? ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mime)
+        : kind === 'video'
+          ? ['video/mp4', 'video/webm', 'video/quicktime'].includes(mime)
+          : kind === 'audio'
+            ? ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4'].includes(mime)
+            : allowedDocuments.has(mime);
+
+    if (!allowed) {
+      throw new BadRequestException('Unsupported file type');
+    }
+
+    const maxBytes = this.attachmentLimitBytes(kind);
+    if (file.size > maxBytes) {
+      throw new BadRequestException(`File too large (max ${Math.floor(maxBytes / (1024 * 1024))}MB)`);
+    }
+  }
 
   setUserOnline(userId: string) {
     this.onlineCounts.set(userId, (this.onlineCounts.get(userId) ?? 0) + 1);
@@ -656,10 +729,46 @@ export class ChatService {
           originalName: true,
           mimeType: true,
           sizeBytes: true,
-          storageKey: true,
         },
       },
     } as const;
+  }
+
+  private async getVisibleAttachmentForUserOrThrow(
+    userId: string,
+    attachmentId: string,
+  ): Promise<VisibleAttachmentRow> {
+    await this.syncLegacyMemberships(userId);
+    await this.ensureMembershipTable();
+    const row = await this.prisma.$queryRaw<VisibleAttachmentRow[]>`
+      SELECT
+        a.id AS "id",
+        a.message_id AS "messageId",
+        m.channel_id AS "channelId",
+        a.storage_key AS "storageKey",
+        a.original_name AS "originalName",
+        a.mime_type AS "mimeType",
+        a.size_bytes AS "sizeBytes",
+        m.created_at AS "createdAt"
+      FROM chat_attachments a
+      INNER JOIN chat_messages m ON m.id = a.message_id
+      INNER JOIN chat_channel_members mem
+        ON mem.channel_id = m.channel_id AND mem.user_id = ${userId}
+      WHERE a.id = ${attachmentId}
+        AND mem.hidden_from_ui_at IS NULL
+        AND m.created_at > COALESCE(mem.history_cleared_before_at, '-infinity'::timestamptz)
+      LIMIT 1
+    `;
+    if (row.length > 0) return row[0];
+
+    const exists = await this.prisma.chatAttachment.findUnique({
+      where: { id: attachmentId },
+      select: { id: true },
+    });
+    if (!exists) {
+      throw new NotFoundException('Attachment not found');
+    }
+    throw new ForbiddenException('You cannot access this attachment');
   }
 
   /**
@@ -806,8 +915,8 @@ export class ChatService {
     if (!text && !file) {
       throw new BadRequestException('Message body or file required');
     }
-    if (file && file.size > 10 * 1024 * 1024) {
-      throw new BadRequestException('File too large (max 10MB)');
+    if (file) {
+      this.assertAllowedAttachment(file);
     }
 
     const msg = await this.prisma.chatMessage.create({
@@ -840,14 +949,63 @@ export class ChatService {
     });
   }
 
-  async getAttachmentDownloadUrl(userId: string, attachmentId: string) {
-    const row = await this.prisma.chatAttachment.findUnique({
-      where: { id: attachmentId },
-      include: { message: { select: { channelId: true } } },
+  async forwardAttachments(
+    channelId: string,
+    userId: string,
+    attachmentIds: string[],
+    body?: string,
+  ) {
+    await this.ensureUserInChannelOrThrow(userId, channelId);
+    const uniqueAttachmentIds = [...new Set(attachmentIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqueAttachmentIds.length === 0) {
+      throw new BadRequestException('At least one attachment is required');
+    }
+
+    const visibleAttachments = await Promise.all(
+      uniqueAttachmentIds.map((attachmentId) => this.getVisibleAttachmentForUserOrThrow(userId, attachmentId)),
+    );
+    const trimmed = (body ?? '').trim();
+
+    return this.prisma.$transaction(async (tx) => {
+      const message = await tx.chatMessage.create({
+        data: {
+          channelId,
+          userId,
+          body: trimmed || null,
+          messageType: 'text',
+        },
+      });
+      await tx.chatAttachment.createMany({
+        data: visibleAttachments.map((attachment) => ({
+          messageId: message.id,
+          storageKey: attachment.storageKey,
+          originalName: attachment.originalName,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+        })),
+      });
+      return tx.chatMessage.findUniqueOrThrow({
+        where: { id: message.id },
+        include: this.messageInclude(),
+      });
     });
-    if (!row) throw new NotFoundException('Attachment not found');
-    await this.ensureUserInChannelOrThrow(userId, row.message.channelId);
+  }
+
+  async getAttachmentDownloadUrl(userId: string, attachmentId: string) {
+    const row = await this.getVisibleAttachmentForUserOrThrow(userId, attachmentId);
     const url = await this.storage.getSignedGetUrl(row.storageKey);
-    return { url, file_name: row.originalName, mime_type: row.mimeType };
+    return {
+      url,
+      file_name: row.originalName,
+      mime_type: row.mimeType,
+      size_bytes: row.sizeBytes,
+      preview_kind: this.previewKindForMime(row.mimeType),
+    };
+  }
+
+  async getAttachmentContent(userId: string, attachmentId: string) {
+    const row = await this.getVisibleAttachmentForUserOrThrow(userId, attachmentId);
+    const object = await this.storage.getObject(row.storageKey);
+    return { row, object };
   }
 }
