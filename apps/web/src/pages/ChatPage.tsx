@@ -2,6 +2,7 @@ import { FormEvent, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState
 import type { Socket } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  ApiError,
   addGroupMember,
   createDmChannel,
   fetchAttachmentBlob,
@@ -769,6 +770,15 @@ export function ChatPage() {
     }
     setComposerHint('');
     setPendingFile(file);
+    // #region agent log
+    console.log('DEBUG_CHAT_PENDING_FILE_SET', {
+      runId: 'upload-debug-v3',
+      hypothesisId: 'H7',
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    });
+    // #endregion
     return true;
   }
 
@@ -1431,6 +1441,18 @@ export function ChatPage() {
     window.clearTimeout(typingClearTimerRef.current);
 
     const fileToSend = pendingFile;
+    // #region agent log
+    console.log('DEBUG_CHAT_ONSEND_STATE', {
+      runId: 'upload-debug-v3',
+      hypothesisId: 'H8',
+      activeChannelId,
+      bodyLength: body.length,
+      hasPendingFile: Boolean(fileToSend),
+      fileName: fileToSend?.name ?? null,
+      fileSize: fileToSend?.size ?? null,
+      fileType: fileToSend?.type ?? null,
+    });
+    // #endregion
     setPendingFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
 
@@ -1457,12 +1479,23 @@ export function ChatPage() {
     };
 
     if (fileToSend) {
+      flashComposerHint(`DEBUG envio archivo: ${Math.round(fileToSend.size / 1024)} KB`, 3000);
       try {
         const msg = normalizeMessage(await sendChannelMessageWithFile(activeChannelId, body, fileToSend));
         setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
         await markChannelRead(activeChannelId);
         updateChannelPreview(msg);
       } catch (e) {
+        const apiError = e instanceof ApiError ? e : null;
+        // #region agent log
+        console.error('DEBUG_CHAT_UPLOAD_CATCH', {
+          runId: 'upload-debug-v3',
+          hypothesisId: 'H8',
+          errorName: e instanceof Error ? e.name : 'unknown',
+          errorMessage: e instanceof Error ? e.message : String(e),
+          errorStatus: apiError?.status ?? null,
+        });
+        // #endregion
         setPendingFile(fileToSend);
         const message = e instanceof Error ? e.message : 'No se pudo subir el archivo.';
         flashComposerHint(message, 5000);
