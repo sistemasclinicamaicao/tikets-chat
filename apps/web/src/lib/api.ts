@@ -455,7 +455,21 @@ export async function authFetch(path: string, init: RequestInit, retry = true): 
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  } catch {
+  } catch (error) {
+    // #region agent log
+    console.error('DEBUG_AUTHFETCH_NETWORK_ERROR', {
+      runId: 'upload-debug-v4',
+      hypothesisId: 'H9',
+      path,
+      method: init.method ?? 'GET',
+      apiBase: API_BASE,
+      errorName: error instanceof Error ? error.name : 'unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    // #endregion
+    // #region agent log
+    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v4',hypothesisId:'H9',location:'apps/web/src/lib/api.ts:authFetch:catch',message:'authFetch network error',data:{path,method:init.method ?? 'GET',apiBase:API_BASE,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     throw new ApiError(
       'No se pudo conectar con el servidor. Verifica la red o VITE_API_ORIGIN.',
       0,
