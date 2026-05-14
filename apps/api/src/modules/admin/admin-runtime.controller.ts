@@ -1,8 +1,9 @@
-import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { Roles } from '../../common/auth/roles.decorator';
 import { RolesGuard } from '../../common/auth/roles.guard';
+import { getBuildMetadata } from '../../common/runtime/runtime-metadata';
 import { StorageService } from '../storage/storage.service';
 
 /**
@@ -14,23 +15,7 @@ import { StorageService } from '../storage/storage.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class AdminRuntimeController {
-  private readonly logger = new Logger(AdminRuntimeController.name);
-
-  constructor(private readonly storage: StorageService) {
-    const storageInfo = this.storage.getRuntimeInfo();
-    this.logger.log(
-      `DEBUG_ADMIN_RUNTIME_BOOT ${JSON.stringify({
-        hypothesisId: 'H3',
-        routes: ['GET /api/v1/admin/runtime-config', 'GET /api/v1/admin/runtime-config/storage', 'GET /api/v1/admin/runtime-config/storage/probe'],
-        storageEndpoint: storageInfo.endpoint,
-        storageHostname: storageInfo.hostname,
-        storagePort: storageInfo.port,
-      })}`,
-    );
-    // #region agent log
-    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H3',location:'apps/api/src/modules/admin/admin-runtime.controller.ts:constructor',message:'admin runtime controller boot',data:{routes:['GET /api/v1/admin/runtime-config','GET /api/v1/admin/runtime-config/storage','GET /api/v1/admin/runtime-config/storage/probe'],storageEndpoint:storageInfo.endpoint,storageHostname:storageInfo.hostname,storagePort:storageInfo.port},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }
+  constructor(private readonly storage: StorageService) {}
 
   @Get()
   @ApiOperation({ summary: 'Parámetros de entorno visibles (sin secretos)' })
@@ -39,6 +24,7 @@ export class AdminRuntimeController {
     const chatDirectoryLimitParsed = rawLimit != null && rawLimit !== '' ? Number(rawLimit) : null;
     const storageInfo = this.storage.getRuntimeInfo();
     return {
+      ...getBuildMetadata(),
       api_prefix: process.env.API_PREFIX ?? 'api/v1',
       chat_directory_user_limit_raw: rawLimit ?? null,
       chat_directory_user_limit_effective:
@@ -64,6 +50,9 @@ export class AdminRuntimeController {
       storage_hostname_kind: storageInfo.hostname_kind,
       storage_using_default_bucket: storageInfo.using_default_bucket,
       storage_using_default_credentials: storageInfo.using_default_credentials,
+      storage_max_attempts: storageInfo.max_attempts,
+      storage_connect_timeout_ms: storageInfo.connect_timeout_ms,
+      storage_socket_timeout_ms: storageInfo.socket_timeout_ms,
     };
   }
 

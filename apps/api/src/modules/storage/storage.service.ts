@@ -1,5 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { lookup } from 'dns/promises';
@@ -19,6 +25,9 @@ export class StorageService {
   private readonly allowSelfSignedStorageCert: boolean;
   private readonly accessKeyId: string;
   private readonly secretAccessKey: string;
+  private readonly connectTimeoutMs: number;
+  private readonly socketTimeoutMs: number;
+  private readonly maxAttempts: number;
 
   constructor(private readonly prisma: PrismaService) {
     this.endpoint = this.normalizeEndpoint(process.env.MINIO_ENDPOINT ?? 'http://127.0.0.1:9000');
@@ -31,6 +40,9 @@ export class StorageService {
     this.allowSelfSignedStorageCert = process.env.STORAGE_TLS_REJECT_UNAUTHORIZED === 'false';
     this.accessKeyId = process.env.MINIO_ACCESS_KEY ?? 'minioadmin';
     this.secretAccessKey = process.env.MINIO_SECRET_KEY ?? 'minioadmin';
+    this.connectTimeoutMs = this.parsePositiveInt(process.env.STORAGE_CONNECT_TIMEOUT_MS, 5000);
+    this.socketTimeoutMs = this.parsePositiveInt(process.env.STORAGE_SOCKET_TIMEOUT_MS, 10000);
+    this.maxAttempts = this.parsePositiveInt(process.env.STORAGE_MAX_ATTEMPTS, 2);
     this.client = new S3Client({
       region: this.region,
       endpoint: this.endpoint,
@@ -39,21 +51,27 @@ export class StorageService {
         secretAccessKey: this.secretAccessKey,
       },
       forcePathStyle: true,
+      maxAttempts: this.maxAttempts,
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
-      ...(this.allowSelfSignedStorageCert && this.endpoint.startsWith('https://')
-        ? { requestHandler: new NodeHttpHandler({ httpsAgent: new https.Agent({ rejectUnauthorized: false }) }) }
-        : {}),
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: this.connectTimeoutMs,
+        socketTimeout: this.socketTimeoutMs,
+        ...(this.allowSelfSignedStorageCert && this.endpoint.startsWith('https://')
+          ? { httpsAgent: new https.Agent({ rejectUnauthorized: false }) }
+          : {}),
+      }),
     });
     this.logConfigurationWarnings();
-    this.emitDebugBootstrapLog();
+    this.logBootstrapSummary();
   }
 
   private normalizeEndpoint(raw: string): string {
     const value = raw.trim().replace(/\/+$/, '');
     if (!value) return 'http://127.0.0.1:9000';
     if (/^https?:\/\//i.test(value)) return value;
-    return `http://${value}`;
+    const useSsl = (process.env.MINIO_USE_SSL ?? '').trim().toLowerCase() === 'true';
+    return `${useSsl ? 'https' : 'http'}://${value}`;
   }
 
   private parsePositiveInt(raw: string | undefined, fallback: number): number {
@@ -93,12 +111,8 @@ export class StorageService {
     }
   }
 
-  private emitDebugBootstrapLog() {
-    const runtimeInfo = this.getRuntimeInfo();
-    this.logger.log(`DEBUG_STORAGE_BOOT ${JSON.stringify(runtimeInfo)}`);
-    // #region agent log
-    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H1',location:'apps/api/src/modules/storage/storage.service.ts:emitDebugBootstrapLog',message:'storage bootstrap runtime info',data:runtimeInfo,timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+  private logBootstrapSummary() {
+    this.logger.log(`Storage runtime ${JSON.stringify(this.getRuntimeInfo())}`);
   }
 
   getRuntimeInfo() {
@@ -116,6 +130,9 @@ export class StorageService {
       endpoint_looks_local: this.isLoopbackHost(url.hostname),
       using_default_bucket: this.bucket === 'helpdesk',
       using_default_credentials: this.accessKeyId === 'minioadmin' && this.secretAccessKey === 'minioadmin',
+      connect_timeout_ms: this.connectTimeoutMs,
+      socket_timeout_ms: this.socketTimeoutMs,
+      max_attempts: this.maxAttempts,
     };
   }
 
@@ -230,19 +247,32 @@ export class StorageService {
           error_message: string;
           error_code: string | null;
           http_status: number | null;
+        }
+      | { skipped: true; reason: 'tcp-failed' | 'tls-failed' };
+    if (!tcp.ok) {
+      bucketHead = { skipped: true, reason: 'tcp-failed' };
+    } else if (info.protocol === 'https' && !('skipped' in tlsProbe) && !tlsProbe.ok) {
+      bucketHead = { skipped: true, reason: 'tls-failed' };
+    } else {
+      try {
+        await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+        bucketHead = { ok: true };
+      } catch (error) {
+        const e = error as {
+          name?: string;
+          message?: string;
+          code?: string;
+          Code?: string;
+          $metadata?: { httpStatusCode?: number };
         };
-    try {
-      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-      bucketHead = { ok: true };
-    } catch (error) {
-      const e = error as { name?: string; message?: string; code?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
-      bucketHead = {
-        ok: false,
-        error_name: e?.name ?? 'Error',
-        error_message: e?.message ?? String(error),
-        error_code: e?.Code ?? e?.code ?? null,
-        http_status: e?.$metadata?.httpStatusCode ?? null,
-      };
+        bucketHead = {
+          ok: false,
+          error_name: e?.name ?? 'Error',
+          error_message: e?.message ?? String(error),
+          error_code: e?.Code ?? e?.code ?? null,
+          http_status: e?.$metadata?.httpStatusCode ?? null,
+        };
+      }
     }
 
     return {
@@ -256,23 +286,6 @@ export class StorageService {
   }
 
   async putObject(key: string, body: Buffer, contentType: string) {
-    const runtimeInfo = this.getRuntimeInfo();
-    this.logger.log(
-      `DEBUG_STORAGE_PUTOBJECT_START ${JSON.stringify({
-        hypothesisId: 'H2',
-        endpoint: runtimeInfo.endpoint,
-        hostname: runtimeInfo.hostname,
-        port: runtimeInfo.port,
-        protocol: runtimeInfo.protocol,
-        bucket: runtimeInfo.bucket,
-        keyPrefix: key.slice(0, 80),
-        bodyBytes: body.byteLength,
-        contentType,
-      })}`,
-    );
-    // #region agent log
-    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H2',location:'apps/api/src/modules/storage/storage.service.ts:putObject:start',message:'storage putObject start',data:{endpoint:runtimeInfo.endpoint,hostname:runtimeInfo.hostname,port:runtimeInfo.port,protocol:runtimeInfo.protocol,bucket:runtimeInfo.bucket,keyPrefix:key.slice(0,80),bodyBytes:body.byteLength,contentType},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       await this.client.send(
         new PutObjectCommand({
@@ -288,28 +301,32 @@ export class StorageService {
         address?: string;
         port?: number;
       };
-      const debugError = {
-        hypothesisId: 'H4',
-        endpoint: runtimeInfo.endpoint,
-        hostname: runtimeInfo.hostname,
-        port: runtimeInfo.port,
-        protocol: runtimeInfo.protocol,
-        bucket: runtimeInfo.bucket,
-        errorName: err?.name ?? 'Error',
-        errorMessage: err?.message ?? String(error),
-        errorCode: err?.code ?? null,
-        errorAddress: err?.address ?? null,
-        errorPort: err?.port ?? null,
-        attempts: err?.$metadata?.attempts ?? null,
-        totalRetryDelay: err?.$metadata?.totalRetryDelay ?? null,
-        httpStatusCode: err?.$metadata?.httpStatusCode ?? null,
-      };
-      this.logger.error(`DEBUG_STORAGE_PUTOBJECT_ERROR ${JSON.stringify(debugError)}`);
-      // #region agent log
-      fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H4',location:'apps/api/src/modules/storage/storage.service.ts:putObject:error',message:'storage putObject error',data:debugError,timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+      this.logger.error(
+        `Storage putObject failed ${JSON.stringify({
+          endpoint: this.endpoint,
+          bucket: this.bucket,
+          keyPrefix: key.slice(0, 80),
+          errorName: err?.name ?? 'Error',
+          errorMessage: err?.message ?? String(error),
+          errorCode: err?.code ?? null,
+          errorAddress: err?.address ?? null,
+          errorPort: err?.port ?? null,
+          attempts: err?.$metadata?.attempts ?? null,
+          totalRetryDelay: err?.$metadata?.totalRetryDelay ?? null,
+          httpStatusCode: err?.$metadata?.httpStatusCode ?? null,
+        })}`,
+      );
       throw error;
     }
+  }
+
+  async deleteObject(key: string) {
+    await this.client.send(
+      new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      }),
+    );
   }
 
   async getSignedGetUrl(key: string, expiresIn = this.defaultSignedUrlExpiresIn) {

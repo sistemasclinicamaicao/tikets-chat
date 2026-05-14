@@ -439,7 +439,7 @@ function maskEmail(email: string | null | undefined) {
 function previewText(body: string | null, author: string) {
   const who = formatDisplayName(author);
   const t = (body ?? '').trim();
-  if (!t) return `${who}: (sin texto)`;
+  if (!t) return `${who}: Mensaje sin contenido`;
   const short = t.length > 120 ? `${t.slice(0, 120)}…` : t;
   return `${who}: ${short}`;
 }
@@ -453,7 +453,19 @@ function lastMessagePreview(msg: Pick<Message, 'body' | 'attachments' | 'message
     if (body) return `${body} · 📎 ${label}`;
     return `📎 ${label}`;
   }
-  return body || '(sin texto)';
+  return body || 'Mensaje sin contenido';
+}
+
+function channelLastMessagePreview(msg: NonNullable<Channel['last_message']>) {
+  if (msg.message_type === 'nudge') return '🔔 Zumbido';
+  const body = (msg.body ?? '').trim();
+  const attachmentCount = Number(msg.attachment_count ?? 0);
+  const attachmentName = (msg.attachment_name ?? '').trim() || 'archivo';
+  if (attachmentCount > 0) {
+    if (body) return `${body} · 📎 ${attachmentName}`;
+    return `📎 ${attachmentName}`;
+  }
+  return body || 'Mensaje sin contenido';
 }
 
 type ChannelListRowProps = {
@@ -536,9 +548,7 @@ function ChannelListRow({
           <span className="chat-channel-row__preview">
             {channel.last_message
               ? previewText(
-                  channel.last_message.message_type === 'nudge'
-                    ? '🔔 Zumbido'
-                    : channel.last_message.body,
+                  channelLastMessagePreview(channel.last_message),
                   channel.last_message.author_name,
                 )
               : 'Sin mensajes'}
@@ -2575,7 +2585,9 @@ export function ChatPage() {
                     </p>
                   ) : message.body ? (
                     <p className="chat-bubble__body">{message.body}</p>
-                  ) : null}
+                  ) : atts.length > 0 ? null : (
+                    <p className="chat-bubble__body">Mensaje sin contenido</p>
+                  )}
                 </article>
               );
             })

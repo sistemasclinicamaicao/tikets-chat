@@ -29,7 +29,7 @@ Equivalente mantenido para quien ejecute compose desde subcarpeta:
 
 En EasyPanel, configura el proyecto tipo **Docker Compose** apuntando al archivo en la raíz y las variables (o sube `.env.easypanel` según permita el panel).
 
-Importante: el `docker-compose.yml` de este repo ya propaga `STORAGE_TLS_REJECT_UNAUTHORIZED` al contenedor `api`, así que definir esa variable en EasyPanel sí surtirá efecto en runtime.
+Importante: el `docker-compose.yml` de este repo ya propaga `STORAGE_TLS_REJECT_UNAUTHORIZED`, `STORAGE_CONNECT_TIMEOUT_MS`, `STORAGE_SOCKET_TIMEOUT_MS` y `STORAGE_MAX_ATTEMPTS` al contenedor `api`, así que definir esas variables en EasyPanel sí surtirá efecto en runtime.
 
 ### Pantalla «Fuente → Github» (solo metadatos del repo)
 
@@ -41,6 +41,8 @@ Importante: el `docker-compose.yml` de este repo ya propaga `STORAGE_TLS_REJECT_
 | Ruta de compilación | `/` (raíz; el compose y los Dockerfiles referenciados están bajo `apps/`) |
 
 Si el panel solo permite **un Dockerfile** en la raíz y no Compose: hay un [`Dockerfile`](Dockerfile) en la **raíz** que construye el **API** (mismo resultado que `apps/api/Dockerfile`). Para el front en un **segundo** servicio EasyPanel, usa [`Dockerfile.web`](Dockerfile.web) en la raíz (build-arg **`VITE_API_ORIGIN`** = URL HTTPS del API, sin barra final). Mejor aún: proyecto **Docker Compose** con [`docker-compose.yml`](docker-compose.yml) para API + web + Postgres + Redis; los adjuntos van a QuObjects externo.
+
+Para el servicio **API** puedes pasar opcionalmente build args `BUILD_GIT_SHA` y `BUILD_TIME`; el runtime los expone en `GET /` y `GET /api/v1/health` junto con `build_source`, de modo que puedas verificar si EasyPanel realmente reconstruyó la imagen correcta.
 
 ## 8) EasyPanel: segundo servicio solo front (`Dockerfile.web`)
 
@@ -61,18 +63,19 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 
 ## 4) Validaciones mínimas post deploy
 
-1. `GET /api/v1/health` responde `200`.
-2. Login OTP funcional.
-3. Chat en tiempo real:
+1. `GET /api/v1/health` responde `200` y devuelve `build_git_sha` / `build_source`.
+2. `GET /api/v1/ready` responde `200` solo si DB + storage están operativos; si falla storage devolverá `503` con detalle de `tcp`, `tls` o `bucket_head`.
+3. Login OTP funcional.
+4. Chat en tiempo real:
    - envío/recepción en vivo,
    - presencia consistente (online/offline),
    - DM y grupos.
-4. Adjuntos chat (subida, preview y descarga) en QuObjects:
+5. Adjuntos chat (subida, preview y descarga) en QuObjects:
    - enviar una imagen y confirmar preview,
    - enviar un video corto y confirmar controles,
    - enviar un PDF/documento y confirmar tarjeta + descarga,
    - recargar la conversación y confirmar que el adjunto sigue asociado al mensaje correcto.
-5. Diagnóstico admin de storage:
+6. Diagnóstico admin de storage:
    - `GET /api/v1/admin/runtime-config` debe reflejar el `storage_endpoint`, `storage_hostname`, `storage_protocol` y `storage_tls_relaxed` esperados;
    - `GET /api/v1/admin/runtime-config/storage/probe` debe confirmar `tcp.ok=true` y, si usas HTTPS con certificado no confiable, te mostrará si el fallo está en `tls` o en `bucket_head`.
 
@@ -80,9 +83,12 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 
 - El contenedor `web` publica el frontend en `${WEB_PORT}`.
 - El contenedor `api` no expone puerto público en este compose; se consume vía red interna desde `web`.
+- `GET /api/v1/health` es liveness barato; `GET /api/v1/ready` es readiness operativo.
+- Si la conectividad a QuObjects está degradada, reduce el tiempo de espera efectivo con `STORAGE_CONNECT_TIMEOUT_MS`, `STORAGE_SOCKET_TIMEOUT_MS` y `STORAGE_MAX_ATTEMPTS` antes de volver a desplegar.
 - Si usarás dominio único con reverse proxy externo de EasyPanel, mantén `VITE_API_ORIGIN` apuntando a ese dominio/API final.
 - **Correo:** el API solo envía correos OTP. Tickets, chat, mensajes directos, grupos y canales de ticket no envían correos.
 - **Chat en el front:** toasts y sonido al recibir mensajes; tono WAV opcional en `apps/web/public/sounds/chat-incoming.wav` (si no existe, suena un tono sintético). El cliente re-emite `chat:sync-rooms` al detectar canal nuevo y cada 45 s para mantener las salas Socket.IO alineadas con la membresía.
+- Esta versión incluye una migración que elimina el índice único legado `chat_channels_department_id_key`; es necesaria para que varios tickets de un mismo departamento puedan crear su canal sin chocar por `department_id`.
 
 ## 6) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway
 
@@ -90,7 +96,7 @@ Si el dominio en **Dominios** apunta a `http://<servicio>:80` pero la imagen del
 
 **Corrección:** en la fila del dominio HTTPS, cambia el destino interno a **`http://<nombre_servicio>:3030/`** (mismo host Docker que ya usas, puerto **3030**).
 
-Comprueba con `GET https://<tu-dominio>/api/v1/health` (debe devolver 200). La raíz `GET /` responde JSON de bienvenida (solo API); el SPA de Vite lo sirve el contenedor **web** del `docker-compose.yml` o un servicio aparte que construya `apps/web`.
+Comprueba con `GET https://<tu-dominio>/api/v1/health` (debe devolver 200) y `GET https://<tu-dominio>/api/v1/ready` (debe devolver 200 cuando DB + QuObjects estén sanos). La raíz `GET /` responde JSON de bienvenida (solo API) con `build_git_sha`, `build_time`, `build_source` y el endpoint efectivo de storage; el SPA de Vite lo sirve el contenedor **web** del `docker-compose.yml` o un servicio aparte que construya `apps/web`.
 
 ### Error Prisma `P3009` (migración fallida)
 

@@ -34,6 +34,27 @@ export class ApiError extends Error {
   }
 }
 
+function buildApiError(
+  response: Response,
+  data: { message?: string | string[] },
+  fallback = 'Request failed',
+) {
+  const rawMessage = data.message;
+  const message = Array.isArray(rawMessage) ? rawMessage.join('; ') : rawMessage;
+  const normalized = message?.trim();
+  if (normalized) {
+    return new ApiError(normalized, response.status, rawMessage);
+  }
+  if (response.status === 503) {
+    return new ApiError(
+      'El servicio de archivos no esta disponible en este momento. Intenta de nuevo en unos segundos.',
+      response.status,
+      rawMessage,
+    );
+  }
+  return new ApiError(fallback, response.status, rawMessage);
+}
+
 type RefreshResponse = {
   access_token: string;
   refresh_token: string;
@@ -300,6 +321,8 @@ type ChatChannel = {
     message_type?: string;
     created_at: string;
     author_name: string;
+    attachment_count?: number;
+    attachment_name?: string | null;
   } | null;
 };
 export type GroupMember = {
@@ -456,20 +479,6 @@ export async function authFetch(path: string, init: RequestInit, retry = true): 
   try {
     response = await fetch(`${API_BASE}${path}`, { ...init, headers });
   } catch (error) {
-    // #region agent log
-    console.error('DEBUG_AUTHFETCH_NETWORK_ERROR', {
-      runId: 'upload-debug-v4',
-      hypothesisId: 'H9',
-      path,
-      method: init.method ?? 'GET',
-      apiBase: API_BASE,
-      errorName: error instanceof Error ? error.name : 'unknown',
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v4',hypothesisId:'H9',location:'apps/web/src/lib/api.ts:authFetch:catch',message:'authFetch network error',data:{path,method:init.method ?? 'GET',apiBase:API_BASE,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     throw new ApiError(
       'No se pudo conectar con el servidor. Verifica la red o VITE_API_ORIGIN.',
       0,
@@ -525,8 +534,7 @@ async function request<T>(
 
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    const message = Array.isArray(data.message) ? data.message.join('; ') : data.message;
-    throw new ApiError(message ?? 'Request failed', response.status, data.message);
+    throw buildApiError(response, data);
   }
 
   const raw = await response.text();
@@ -714,41 +722,13 @@ export async function sendChannelMessageWithFile(channelId: string, body: string
   const t = body.trim();
   if (t) form.append('body', t);
   form.append('file', file);
-  // #region agent log
-  console.log('DEBUG_CHAT_UPLOAD_START', {
-    runId: 'upload-debug-v2',
-    hypothesisId: 'H5',
-    channelId,
-    bodyLength: t.length,
-    fileName: file.name,
-    fileSize: file.size,
-    fileType: file.type,
-  });
-  // #endregion
-  // #region agent log
-  fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v2',hypothesisId:'H1',location:'apps/web/src/lib/api.ts:sendChannelMessageWithFile:request',message:'chat upload request start',data:{channelId,bodyLength:t.length,fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now()})}).catch((error)=>{console.warn('DEBUG_CHAT_UPLOAD_LOG_FAIL',{runId:'upload-debug-v2',hypothesisId:'H5',stage:'request',error:String(error)})});
-  // #endregion
   const response = await authFetch(`/chat/channels/${channelId}/messages/with-file`, {
     method: 'POST',
     body: form,
   });
-  // #region agent log
-  console.log('DEBUG_CHAT_UPLOAD_RESPONSE', {
-    runId: 'upload-debug-v2',
-    hypothesisId: 'H6',
-    channelId,
-    status: response.status,
-    ok: response.ok,
-    contentType: response.headers.get('content-type'),
-  });
-  // #endregion
-  // #region agent log
-  fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'upload-debug-v2',hypothesisId:'H4',location:'apps/web/src/lib/api.ts:sendChannelMessageWithFile:response',message:'chat upload response received',data:{channelId,status:response.status,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now()})}).catch((error)=>{console.warn('DEBUG_CHAT_UPLOAD_LOG_FAIL',{runId:'upload-debug-v2',hypothesisId:'H5',stage:'response',error:String(error)})});
-  // #endregion
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    const message = Array.isArray(data.message) ? data.message.join('; ') : data.message;
-    throw new ApiError(message ?? 'Request failed', response.status, data.message);
+    throw buildApiError(response, data, 'No se pudo subir el archivo');
   }
   return (await response.json()) as ChatMessage;
 }
@@ -775,8 +755,7 @@ export async function fetchAttachmentBlob(attachmentId: string) {
   const response = await authFetch(`/chat/attachments/${attachmentId}/content`, { method: 'GET' });
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
-    const message = Array.isArray(data.message) ? data.message.join('; ') : data.message;
-    throw new ApiError(message ?? 'Request failed', response.status, data.message);
+    throw buildApiError(response, data);
   }
   return response.blob();
 }

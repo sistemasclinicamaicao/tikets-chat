@@ -60,6 +60,15 @@ export class ChatService {
     return 'file';
   }
 
+  private isUniqueConstraintError(error: unknown, field: string) {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      Array.isArray(error.meta?.target) &&
+      error.meta.target.includes(field)
+    );
+  }
+
   private assertAllowedAttachment(file: { originalname: string; mimetype: string; size: number }) {
     const mime = (file.mimetype || 'application/octet-stream').toLowerCase();
     const kind = this.previewKindForMime(mime);
@@ -496,22 +505,49 @@ export class ChatService {
 
   /** Último mensaje visible para este usuario (respeta history_cleared_before_at del miembro). */
   private async lastMessagesForViewer(userId: string, channelIds: string[]) {
-    const map = new Map<string, { body: string | null; messageType: string; createdAt: Date; authorName: string }>();
+    const map = new Map<
+      string,
+      {
+        body: string | null;
+        messageType: string;
+        createdAt: Date;
+        authorName: string;
+        attachmentCount: number;
+        attachmentName: string | null;
+      }
+    >();
     if (channelIds.length === 0) return map;
 
     const rows = await this.prisma.$queryRaw<
-      { channel_id: string; body: string | null; message_type: string; created_at: Date; author_name: string }[]
+      {
+        channel_id: string;
+        body: string | null;
+        message_type: string;
+        created_at: Date;
+        author_name: string;
+        attachment_count: number;
+        attachment_name: string | null;
+      }[]
     >(Prisma.sql`
       SELECT DISTINCT ON (m.channel_id)
         m.channel_id,
         m.body,
         m.message_type AS message_type,
         m.created_at,
-        u.name AS author_name
+        u.name AS author_name,
+        COALESCE(att.attachment_count, 0)::int AS attachment_count,
+        att.attachment_name
       FROM chat_messages m
       INNER JOIN users u ON u.id = m.user_id
       INNER JOIN chat_channel_members mem
         ON mem.channel_id = m.channel_id AND mem.user_id = ${userId}
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*)::int AS attachment_count,
+          MIN(a.original_name) AS attachment_name
+        FROM chat_attachments a
+        WHERE a.message_id = m.id
+      ) att ON TRUE
       WHERE m.channel_id IN (${Prisma.join(channelIds)})
         AND m.created_at > COALESCE(mem.history_cleared_before_at, '1970-01-01'::timestamptz)
       ORDER BY m.channel_id, m.created_at DESC
@@ -523,6 +559,8 @@ export class ChatService {
         messageType: row.message_type,
         createdAt: row.created_at,
         authorName: row.author_name,
+        attachmentCount: row.attachment_count,
+        attachmentName: row.attachment_name,
       });
     }
     return map;
@@ -630,6 +668,8 @@ export class ChatService {
               message_type: last.messageType,
               created_at: last.createdAt.toISOString(),
               author_name: last.authorName,
+              attachment_count: last.attachmentCount,
+              attachment_name: last.attachmentName,
             }
           : null,
       };
@@ -667,13 +707,10 @@ export class ChatService {
       return existing;
     }
 
-    const channel = await this.prisma.chatChannel.create({
-      data: {
-        channelType: 'ticket',
-        ticketId,
-        departmentId: ticket.departmentId,
-        name: `Ticket ${this.formatTicketChannelLabel(ticket.ticketNumber)}`,
-      },
+    const channel = await this.createTicketChannelOrReuse({
+      ticketId,
+      departmentId: ticket.departmentId,
+      ticketNumber: ticket.ticketNumber,
     });
     await this.ensureUsersInChannel(channel.id, memberIds);
     return channel;
@@ -694,16 +731,43 @@ export class ChatService {
       await this.ensureUsersInChannel(existing.id, ids);
       return existing;
     }
-    const channel = await this.prisma.chatChannel.create({
-      data: {
-        channelType: 'ticket',
-        ticketId: params.ticketId,
-        departmentId: params.departmentId,
-        name: `Ticket ${label}`,
-      },
+    const channel = await this.createTicketChannelOrReuse({
+      ticketId: params.ticketId,
+      departmentId: params.departmentId,
+      ticketNumber: params.ticketNumber,
     });
     await this.ensureUsersInChannel(channel.id, ids);
     return channel;
+  }
+
+  private async createTicketChannelOrReuse(params: {
+    ticketId: string;
+    departmentId: string;
+    ticketNumber: bigint;
+  }) {
+    try {
+      return await this.prisma.chatChannel.create({
+        data: {
+          channelType: 'ticket',
+          ticketId: params.ticketId,
+          departmentId: params.departmentId,
+          name: `Ticket ${this.formatTicketChannelLabel(params.ticketNumber)}`,
+        },
+      });
+    } catch (error) {
+      if (
+        this.isUniqueConstraintError(error, 'ticket_id') ||
+        this.isUniqueConstraintError(error, 'department_id')
+      ) {
+        const existing = await this.prisma.chatChannel.findUnique({
+          where: { ticketId: params.ticketId },
+        });
+        if (existing) {
+          return existing;
+        }
+      }
+      throw error;
+    }
   }
 
   async addUsersToTicketChannel(ticketId: string, userIds: string[]) {
@@ -945,30 +1009,44 @@ export class ChatService {
       throw new ServiceUnavailableException('No se pudo subir el archivo al almacenamiento.');
     }
 
-    const message = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.chatMessage.create({
-        data: {
-          channelId,
-          userId,
-          body: text || null,
-        },
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const created = await tx.chatMessage.create({
+          data: {
+            channelId,
+            userId,
+            body: text || null,
+          },
+        });
+        await tx.chatAttachment.create({
+          data: {
+            messageId: created.id,
+            storageKey: key,
+            originalName: file.originalname.slice(0, 255),
+            mimeType: file.mimetype.slice(0, 127),
+            sizeBytes: file.size,
+          },
+        });
+        return tx.chatMessage.findUniqueOrThrow({
+          where: { id: created.id },
+          include: this.messageInclude(),
+        });
       });
-      await tx.chatAttachment.create({
-        data: {
-          messageId: created.id,
-          storageKey: key,
-          originalName: file.originalname.slice(0, 255),
-          mimeType: file.mimetype.slice(0, 127),
-          sizeBytes: file.size,
-        },
-      });
-      return tx.chatMessage.findUniqueOrThrow({
-        where: { id: created.id },
-        include: this.messageInclude(),
-      });
-    });
-
-    return message;
+    } catch (error) {
+      this.logger.error(
+        `Chat attachment DB transaction failed for channel ${channelId}; deleting uploaded blob ${key}`,
+      );
+      try {
+        await this.storage.deleteObject(key);
+      } catch (cleanupError) {
+        const cleanupReason =
+          cleanupError instanceof Error
+            ? `${cleanupError.name}: ${cleanupError.message}`
+            : String(cleanupError);
+        this.logger.error(`Chat attachment cleanup failed for key ${key}: ${cleanupReason}`);
+      }
+      throw error;
+    }
   }
 
   async forwardAttachments(

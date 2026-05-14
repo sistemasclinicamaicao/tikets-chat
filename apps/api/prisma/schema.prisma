@@ -406,6 +406,7 @@ model ChatChannel {
   ticket       Ticket?      @relation(fields: [ticketId], references: [id])
   messages     ChatMessage[]
 
+  @@index([departmentId], map: "chat_channels_department_id_idx")
   @@map("chat_channels")
 }
 

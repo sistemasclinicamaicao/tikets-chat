@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { getBuildMetadata } from './common/runtime/runtime-metadata';
 import { StorageService } from './modules/storage/storage.service';
 
 /** Respuesta en `GET /` (sin prefijo `api/v1`): dominio público suele abrir la raíz. */
@@ -15,8 +16,9 @@ export class RootController {
       service: 'chat-tikets-api',
       hint: 'El front (Vite) se despliega con el servicio web / docker-compose; esta imagen es solo API JSON.',
       healthUrl: `/${prefix}/health`,
+      readyUrl: `/${prefix}/ready`,
       docsUrl: `/${prefix}/docs`,
-      debug_build_marker: 'quobjects-debug-v2',
+      ...getBuildMetadata(),
       storage_endpoint: storageInfo.endpoint,
       storage_hostname: storageInfo.hostname,
       storage_port: storageInfo.port,

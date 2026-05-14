@@ -16,7 +16,7 @@ function pathWithoutQuery(url: string): string {
 }
 
 function shouldSkipPath(path: string): boolean {
-  const raw = process.env.HTTP_ACCESS_LOG_SKIP_PATHS ?? '/health,/docs';
+  const raw = process.env.HTTP_ACCESS_LOG_SKIP_PATHS ?? '/health,/ready,/docs';
   const parts = raw
     .split(',')
     .map((s) => s.trim())
