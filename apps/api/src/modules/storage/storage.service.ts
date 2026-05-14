@@ -46,6 +46,7 @@ export class StorageService {
         : {}),
     });
     this.logConfigurationWarnings();
+    this.emitDebugBootstrapLog();
   }
 
   private normalizeEndpoint(raw: string): string {
@@ -90,6 +91,14 @@ export class StorageService {
         `MINIO_ENDPOINT=${this.endpoint} usa HTTPS sobre IP pública. Si el certificado no coincide con la IP, EasyPanel fallará al subir adjuntos hasta activar STORAGE_TLS_REJECT_UNAUTHORIZED=false o corregir el certificado.`,
       );
     }
+  }
+
+  private emitDebugBootstrapLog() {
+    const runtimeInfo = this.getRuntimeInfo();
+    this.logger.log(`DEBUG_STORAGE_BOOT ${JSON.stringify(runtimeInfo)}`);
+    // #region agent log
+    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H1',location:'apps/api/src/modules/storage/storage.service.ts:emitDebugBootstrapLog',message:'storage bootstrap runtime info',data:runtimeInfo,timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   }
 
   getRuntimeInfo() {
@@ -247,14 +256,60 @@ export class StorageService {
   }
 
   async putObject(key: string, body: Buffer, contentType: string) {
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-      }),
+    const runtimeInfo = this.getRuntimeInfo();
+    this.logger.log(
+      `DEBUG_STORAGE_PUTOBJECT_START ${JSON.stringify({
+        hypothesisId: 'H2',
+        endpoint: runtimeInfo.endpoint,
+        hostname: runtimeInfo.hostname,
+        port: runtimeInfo.port,
+        protocol: runtimeInfo.protocol,
+        bucket: runtimeInfo.bucket,
+        keyPrefix: key.slice(0, 80),
+        bodyBytes: body.byteLength,
+        contentType,
+      })}`,
     );
+    // #region agent log
+    fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H2',location:'apps/api/src/modules/storage/storage.service.ts:putObject:start',message:'storage putObject start',data:{endpoint:runtimeInfo.endpoint,hostname:runtimeInfo.hostname,port:runtimeInfo.port,protocol:runtimeInfo.protocol,bucket:runtimeInfo.bucket,keyPrefix:key.slice(0,80),bodyBytes:body.byteLength,contentType},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+        }),
+      );
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException & {
+        $metadata?: { attempts?: number; totalRetryDelay?: number; httpStatusCode?: number };
+        address?: string;
+        port?: number;
+      };
+      const debugError = {
+        hypothesisId: 'H4',
+        endpoint: runtimeInfo.endpoint,
+        hostname: runtimeInfo.hostname,
+        port: runtimeInfo.port,
+        protocol: runtimeInfo.protocol,
+        bucket: runtimeInfo.bucket,
+        errorName: err?.name ?? 'Error',
+        errorMessage: err?.message ?? String(error),
+        errorCode: err?.code ?? null,
+        errorAddress: err?.address ?? null,
+        errorPort: err?.port ?? null,
+        attempts: err?.$metadata?.attempts ?? null,
+        totalRetryDelay: err?.$metadata?.totalRetryDelay ?? null,
+        httpStatusCode: err?.$metadata?.httpStatusCode ?? null,
+      };
+      this.logger.error(`DEBUG_STORAGE_PUTOBJECT_ERROR ${JSON.stringify(debugError)}`);
+      // #region agent log
+      fetch('http://127.0.0.1:7274/ingest/59bdcc31-fe05-46ac-a0ca-d7ce2215562f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de3583'},body:JSON.stringify({sessionId:'de3583',runId:'quobjects-debug-v1',hypothesisId:'H4',location:'apps/api/src/modules/storage/storage.service.ts:putObject:error',message:'storage putObject error',data:debugError,timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      throw error;
+    }
   }
 
   async getSignedGetUrl(key: string, expiresIn = this.defaultSignedUrlExpiresIn) {
