@@ -72,9 +72,14 @@ export class TokenService {
 
   async rotateRefreshToken(refreshToken: string, deviceId?: string) {
     const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_change_me';
-    const payload = await this.jwtService.verifyAsync<JwtUserPayload>(refreshToken, {
-      secret: refreshSecret,
-    });
+    let payload: JwtUserPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtUserPayload>(refreshToken, {
+        secret: refreshSecret,
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
 
     const tokens = await this.prisma.refreshToken.findMany({
       where: { userId: payload.sub, isRevoked: false, expiresAt: { gt: new Date() } },

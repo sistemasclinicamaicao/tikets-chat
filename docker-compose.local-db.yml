@@ -1,0 +1,33 @@
+# Solo PostgreSQL para desarrollo local (tablas vía Prisma desde la máquina host).
+# Requisito: Docker Desktop en ejecución en Windows.
+#
+#   docker compose -f docker-compose.local-db.yml up -d
+#
+# DATABASE_URL en apps/api/.env debe coincidir (como en .env.example):
+#   postgresql://tickets_user:tickets_pass@127.0.0.1:5432/tickets_db?schema=public
+#
+# Luego (sin arrancar el API):
+#   cd apps/api && npx prisma migrate deploy && npm run seed:root
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat_tikets_postgres_local
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tickets_db
+      POSTGRES_USER: tickets_user
+      POSTGRES_PASSWORD: tickets_pass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - chat_tikets_pgdata_local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tickets_user -d tickets_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  chat_tikets_pgdata_local:

@@ -423,7 +423,10 @@ export async function refreshAccessToken(opts?: { silent?: boolean }): Promise<s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: currentRefresh }),
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        if (response.status === 401) clearSession();
+        return null;
+      }
 
       const data = (await response.json()) as RefreshResponse;
       localStorage.setItem('access_token', data.access_token);

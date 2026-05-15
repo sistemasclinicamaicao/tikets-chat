@@ -847,10 +847,13 @@ export class TicketsService {
         department: true,
       },
     });
-    return rows.map((t) => ({
-      ...t,
-      ticketNumber: t.ticketNumber.toString(),
-      ticketNumberFormatted: this.formatTicketNumberDisplay(t.ticketNumber),
-    }));
+    return rows.map((t) => {
+      const { ticketNumber, ...rest } = t;
+      return {
+        ...rest,
+        ticketNumber: ticketNumber.toString(),
+        ticketNumberFormatted: this.formatTicketNumberDisplay(ticketNumber),
+      };
+    });
   }
 }

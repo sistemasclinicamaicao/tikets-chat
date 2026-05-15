@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { disconnectRealtime } from '../lib/chatRealtime';
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -25,6 +25,13 @@ function getInitials(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** Lee el tema actual del documento; default 'light'. */
+function getCurrentTheme(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'light';
+  const t = document.documentElement.dataset.theme;
+  return t === 'dark' ? 'dark' : 'light';
 }
 
 function profileFromStorage(): CurrentUserProfile | null {
@@ -59,7 +66,84 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const [employeeProfileHint, setEmployeeProfileHint] = useState<string | null>(null);
   /** Submenú de Configuración (admin): segundo clic en «Configuración» lo oculta. */
   const [settingsSubnavOpen, setSettingsSubnavOpen] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => getCurrentTheme());
   const prevPathRef = useRef(location.pathname);
+  const mobileNavToggleRef = useRef<HTMLButtonElement>(null);
+  /** En ≤860px: menú lateral en cajón; cabecera del shell oculta en CSS */
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileShellNarrow, setMobileShellNarrow] = useState(
+    typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 860px)').matches,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 860px)');
+    function sync() {
+      const matches = mq.matches;
+      setMobileShellNarrow(matches);
+      if (!matches) setMobileNavOpen(false);
+    }
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  /** Cierra el cajón: devuelve foco al botón Menú para no dejar foco dentro de aria-hidden */
+  const closeMobileNav = useCallback((opts?: { blurOnly?: boolean }) => {
+    if (opts?.blurOnly) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    } else {
+      mobileNavToggleRef.current?.focus({ preventScroll: true });
+    }
+    setMobileNavOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileShellNarrow || !mobileNavOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeMobileNav();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileShellNarrow, mobileNavOpen, closeMobileNav]);
+
+  useLayoutEffect(() => {
+    if (!mobileShellNarrow || mobileNavOpen) return;
+    const drawer = document.getElementById('workspace-nav-drawer');
+    const ae = document.activeElement;
+    if (drawer && ae instanceof Node && drawer.contains(ae)) {
+      mobileNavToggleRef.current?.focus({ preventScroll: true });
+    }
+  }, [mobileShellNarrow, mobileNavOpen]);
+
+  useEffect(() => {
+    function onThemeChange(e: Event) {
+      const next = (e as CustomEvent<'light' | 'dark'>).detail;
+      if (next === 'light' || next === 'dark') setTheme(next);
+    }
+    window.addEventListener('app-theme-change', onThemeChange);
+    return () => window.removeEventListener('app-theme-change', onThemeChange);
+  }, []);
+
+  function toggleTheme() {
+    const next: 'light' | 'dark' = theme === 'dark' ? 'light' : 'dark';
+    const setter = (window as unknown as { __setAppTheme?: (t: 'light' | 'dark') => void })
+      .__setAppTheme;
+    if (typeof setter === 'function') {
+      setter(next);
+    } else {
+      document.documentElement.dataset.theme = next;
+      try {
+        localStorage.setItem('theme', next);
+      } catch {
+        /* storage indisponible */
+      }
+      setTheme(next);
+    }
+  }
 
   useEffect(() => {
     if (!localStorage.getItem('access_token')) {
@@ -155,7 +239,12 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   }
 
   return (
-    <main className="dashboard-shell dashboard-shell--fluid">
+    <main
+      id="dashboard-main"
+      className={`dashboard-shell dashboard-shell--fluid${
+        mobileShellNarrow && mobileNavOpen ? ' dashboard-shell--mobile-drawer-open' : ''
+      }`}
+    >
       <header className="dashboard-header">
         <div className="dashboard-header__brand">
           <span className="dashboard-header__eyebrow">Mesa de soporte</span>
@@ -189,19 +278,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
             aria-label="Cerrar sesión"
             title="Cerrar sesión"
           >
-            <svg
-              className="dashboard-header__logout-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.75}
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
-            </svg>
+            <i className="ti ti-logout dashboard-header__logout-icon" aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -229,6 +306,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
                 className="employee-profile-modal__close"
                 onClick={closeEmployeeModal}
                 aria-label="Cerrar"
+                autoFocus={employeeModalOpen}
               >
                 ×
               </button>
@@ -280,34 +358,79 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
         </div>
       ) : null}
 
+      {mobileShellNarrow && mobileNavOpen ? (
+        <button
+          type="button"
+          className="mobile-nav-drawer-backdrop"
+          aria-label="Cerrar menú"
+          tabIndex={-1}
+          onClick={() => closeMobileNav()}
+        />
+      ) : null}
+
       <div className="workspace-layout">
-        <aside className="workspace-nav-panel">
+        <aside
+          id="workspace-nav-drawer"
+          className="workspace-nav-panel"
+          aria-hidden={mobileShellNarrow ? !mobileNavOpen : undefined}
+        >
+          {mobileShellNarrow ? (
+            <div className="workspace-mobile-drawer-head">
+              <span className="workspace-mobile-drawer-head__title">Menú</span>
+              <button
+                type="button"
+                className="workspace-mobile-drawer-head__close"
+                onClick={() => closeMobileNav()}
+                aria-label="Cerrar menú"
+              >
+                <i className="ti ti-x" aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
           <nav className="section-nav section-nav--vertical">
-            <Link className={location.pathname === '/' ? 'active' : ''} to="/">
-              Inicio
+            <Link
+              className={location.pathname === '/' ? 'active' : ''}
+              to="/"
+              onClick={() => closeMobileNav()}
+            >
+              <i className="ti ti-home" aria-hidden="true" />
+              <span>Inicio</span>
             </Link>
-            <Link className={location.pathname.startsWith('/tickets') ? 'active' : ''} to="/tickets">
-              Tickets
+            <Link
+              className={location.pathname.startsWith('/tickets') ? 'active' : ''}
+              to="/tickets"
+              onClick={() => closeMobileNav()}
+            >
+              <i className="ti ti-ticket" aria-hidden="true" />
+              <span>Tickets</span>
             </Link>
             <Link
               className={location.pathname.startsWith('/chat') ? 'active' : ''}
               to="/chat"
+              onClick={() => closeMobileNav()}
             >
-              Chat
+              <i className="ti ti-message-circle" aria-hidden="true" />
+              <span>Chat</span>
             </Link>
             <Link
               className={location.pathname.startsWith('/settings') ? 'active' : ''}
               to="/settings"
               aria-expanded={isGlobalAdmin && location.pathname.startsWith('/settings') ? settingsSubnavOpen : undefined}
               onClick={(e) => {
-                if (!isGlobalAdmin) return;
+                if (!isGlobalAdmin) {
+                  closeMobileNav();
+                  return;
+                }
                 if (location.pathname.startsWith('/settings')) {
                   e.preventDefault();
                   setSettingsSubnavOpen((open) => !open);
+                } else {
+                  closeMobileNav();
                 }
               }}
             >
-              Configuración
+              <i className="ti ti-settings" aria-hidden="true" />
+              <span>Configuración</span>
             </Link>
             {showSettingsSubnav ? (
               <div className="workspace-settings-subnav" aria-label="Secciones de configuración">
@@ -322,6 +445,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
                           id={`settings-nav-${id}`}
                           to={`/settings?tab=${id}`}
                           className={selected ? 'active' : ''}
+                          onClick={() => closeMobileNav()}
                         >
                           {label}
                         </Link>
@@ -335,13 +459,109 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
               <Link
                 className={location.pathname.startsWith('/inventario') ? 'active' : ''}
                 to="/inventario"
+                onClick={() => closeMobileNav()}
               >
-                Inventario
+                <i className="ti ti-box" aria-hidden="true" />
+                <span>Inventario</span>
               </Link>
             ) : null}
           </nav>
+          <div className="workspace-nav-panel__footer">
+            <button
+              type="button"
+              className="workspace-nav-panel__mobile-footer-btn workspace-nav-panel__mobile-footer-btn--profile"
+              onClick={() => {
+                closeMobileNav({ blurOnly: true });
+                void openEmployeeModal();
+              }}
+              title="Mis datos"
+              aria-label="Ver datos del empleado"
+            >
+              <i className="ti ti-user" aria-hidden="true" />
+              <span>Mi perfil</span>
+            </button>
+            <div className="workspace-nav-panel__user">
+              <span className="workspace-nav-panel__avatar-wrap">
+                <span className="workspace-nav-panel__avatar" aria-hidden="true">
+                  {getInitials(userName)}
+                </span>
+                <span
+                  className="presence-dot workspace-nav-panel__presence-dot"
+                  aria-hidden="true"
+                />
+              </span>
+              <span className="workspace-nav-panel__user-name" title={userName}>
+                {userName}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="workspace-nav-panel__theme-toggle"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            >
+              <i className={`ti ${theme === 'dark' ? 'ti-sun' : 'ti-moon'}`} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="workspace-nav-panel__mobile-footer-btn workspace-nav-panel__mobile-footer-btn--logout"
+              onClick={() => {
+                closeMobileNav();
+                logout();
+              }}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+            >
+              <i className="ti ti-logout" aria-hidden="true" />
+              <span>Salir</span>
+            </button>
+          </div>
         </aside>
-        <section className="workspace-content">
+        <section className="workspace-content workspace-content--app">
+          {mobileShellNarrow ? (
+            <div className="workspace-mobile-strip">
+              <button
+                ref={mobileNavToggleRef}
+                type="button"
+                className="workspace-mobile-strip__toggle"
+                aria-expanded={mobileNavOpen}
+                aria-controls="workspace-nav-drawer"
+                onClick={() => setMobileNavOpen(true)}
+              >
+                <i className="ti ti-menu-2" aria-hidden="true" />
+                <span>Menú</span>
+              </button>
+              <span className="workspace-mobile-strip__app-label" aria-hidden>
+                {location.pathname.startsWith('/chat')
+                  ? 'Chat'
+                  : location.pathname.startsWith('/tickets')
+                    ? 'Tickets'
+                    : location.pathname.startsWith('/settings')
+                      ? 'Configuración'
+                      : location.pathname.startsWith('/inventario')
+                        ? 'Inventario'
+                        : 'Inicio'}
+              </span>
+              <button
+                type="button"
+                className="workspace-mobile-strip__icon-btn"
+                onClick={() => void openEmployeeModal()}
+                aria-label="Ver datos del empleado"
+                title={userName}
+              >
+                <i className="ti ti-user" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="workspace-mobile-strip__icon-btn"
+                onClick={logout}
+                aria-label="Cerrar sesión"
+              >
+                <i className="ti ti-logout" aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
           <Outlet />
         </section>
       </div>

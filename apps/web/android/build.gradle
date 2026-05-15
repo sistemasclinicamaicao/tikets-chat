@@ -24,6 +24,20 @@ allprojects {
     }
 }
 
+// @capacitor/android targets Java 21; if Gradle's JDK is older, javac fails with "invalid source release: 21".
+// Pin the Android compile compatibility to Java 17 (works with JDK 17+).
+subprojects { sub ->
+    afterEvaluate {
+        def androidExt = sub.extensions.findByName("android")
+        if (androidExt != null) {
+            androidExt.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }

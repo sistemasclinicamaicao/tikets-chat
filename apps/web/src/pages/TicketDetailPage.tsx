@@ -388,7 +388,7 @@ export function TicketDetailPage() {
       ) : null}
 
       <div className="module-card">
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+        <header className="ticket-detail__masthead">
           <div>
             <h2>
               {ticket.ticketNumberFormatted ?? `TK-${ticket.ticketNumber}`}

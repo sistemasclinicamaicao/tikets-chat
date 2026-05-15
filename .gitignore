@@ -17,6 +17,7 @@ build/
 apps/*/.env
 !apps/api/.env.example
 !apps/web/.env.example
+apps/web/.env.production
 
 # Local backups and logs
 backups/
@@ -28,6 +29,9 @@ coverage/
 .nyc_output/
 .turbo/
 *.tsbuildinfo
+
+# Local Gradle caches (Capacitor / APK tooling)
+apps/web/.gradle-capcache/
 
 # OS / IDE
 .DS_Store
