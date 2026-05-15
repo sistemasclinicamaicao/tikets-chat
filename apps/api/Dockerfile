@@ -4,6 +4,8 @@ ARG BUILD_GIT_SHA=unknown
 ARG BUILD_TIME=unknown
 ARG BUILD_SOURCE=apps-api-dockerfile
 
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 
@@ -12,10 +14,15 @@ RUN npm run prisma:generate && npm run build
 
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
+ARG BUILD_GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_SOURCE=apps-api-dockerfile
 ENV NODE_ENV=production
 ENV BUILD_GIT_SHA=${BUILD_GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV BUILD_SOURCE=${BUILD_SOURCE}
+
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules

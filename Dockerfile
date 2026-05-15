@@ -7,6 +7,8 @@ ARG BUILD_GIT_SHA=unknown
 ARG BUILD_TIME=unknown
 ARG BUILD_SOURCE=dockerfile-root-api
 
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 COPY apps/api/package*.json ./
 # ts-jest pide typescript<6; el proyecto usa TS 6 — npm ci falla sin legacy-peer-deps
 RUN npm ci --legacy-peer-deps
@@ -16,10 +18,16 @@ RUN npm run prisma:generate && npm run build
 
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
+# ARG debe declararse en cada etapa; si no, `${BUILD_*}` en ENV es “undefined” para BuildKit.
+ARG BUILD_GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_SOURCE=dockerfile-root-api
 ENV NODE_ENV=production
 ENV BUILD_GIT_SHA=${BUILD_GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV BUILD_SOURCE=${BUILD_SOURCE}
+
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
