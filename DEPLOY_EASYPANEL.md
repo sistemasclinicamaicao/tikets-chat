@@ -88,6 +88,14 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 - Si usarás dominio único con reverse proxy externo de EasyPanel, mantén `VITE_API_ORIGIN` apuntando a ese dominio/API final.
 - **Correo:** el API solo envía correos OTP. Tickets, chat, mensajes directos, grupos y canales de ticket no envían correos.
 - **Chat en el front:** toasts y sonido al recibir mensajes; tono WAV opcional en `apps/web/public/sounds/chat-incoming.wav` (si no existe, suena un tono sintético). El cliente re-emite `chat:sync-rooms` al detectar canal nuevo y cada 45 s para mantener las salas Socket.IO alineadas con la membresía.
+- **Push FCM (APK / servidor):** define `FCM_SERVICE_ACCOUNT_JSON` en el servicio API con el JSON de la cuenta de servicio de Firebase (una sola línea o variable multilínea según el panel). Sin esta variable, el API omite el envío multicast. Los dispositivos Android registran el token vía `POST /api/v1/auth/push-token` (JWT). Coloca `google-services.json` en `apps/web/android/app/` antes de `cap sync` para que Gradle aplique el plugin de Google Services (el repo tolera su ausencia, pero entonces FCM no llegará al nativo).
+
+## 9) APK Android: segundo plano, recientes y batería
+
+- **Cerrar desde «recientes»:** Android puede matar el proceso de la WebView; no hay API oficial para impedirlo sin UX intrusiva (p. ej. servicio en primer plano con notificación persistente).
+- **Optimización de batería:** en muchos equipos conviene excluir la app de restricciones agresivas si se esperan avisos fiables cuando la app está en segundo plano (sigue sin ser garantía).
+- **Avisos con app cerrada:** requieren push remoto (FCM ya integrado en backend + registro en cliente); el usuario debe aceptar permiso de notificaciones (Android 13+ usa `POST_NOTIFICATIONS`).
+- **Web en el navegador:** las notificaciones de escritorio dependen del permiso del sitio y de que el runtime siga vivo; no sustituyen a FCM en la APK.
 - Esta versión incluye una migración que elimina el índice único legado `chat_channels_department_id_key`; es necesaria para que varios tickets de un mismo departamento puedan crear su canal sin chocar por `department_id`.
 
 ## 6) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway

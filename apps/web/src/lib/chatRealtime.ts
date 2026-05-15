@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { refreshAccessToken, SOCKET_BASE } from './api';
+import { authGet } from './authStorage';
 
 export type RealtimeStatus = 'connecting' | 'live' | 'offline';
 
@@ -73,7 +74,7 @@ export function subscribeRealtimeStatus(listener: StatusListener) {
 }
 
 export async function ensureRealtimeConnected(origin: string) {
-  let token = localStorage.getItem('access_token') ?? '';
+  let token = authGet('access_token') ?? '';
   if (!token) {
     disconnectRealtime('missing-token');
     return null;

@@ -1,17 +1,47 @@
+import {
+  authGet,
+  authSet,
+  clearSessionWallClockExceeded,
+  ensureSessionWallClockStarted,
+  hasStoredAccessToken,
+  migrateLegacyDesktopAuthOnce,
+  wipeAuthSessionFully,
+} from './authStorage';
+
 /**
  * Origen del API (sin barra final). Ej.: `http://localhost:3030` o `https://api.empresa.com`.
  * En `npm run dev`, si no defines `VITE_API_ORIGIN`, se usa ruta relativa `/api/v1` (proxy en `vite.config.ts` → :3030).
+ *
+ * En producción sin URL válida (o con placeholders tipo CAMBIA-POR-TU-… en variables de entorno) se usa el API público configurado para Easypanel.
  */
+/** Debe coincidir con `.env.production` / Easypanel. */
+const NATIVE_FALLBACK_API_ORIGIN = 'https://py3-chat.tjgwxu.easypanel.host';
+
+/** Valores tutorial / placeholder que a veces quedan en variables de entorno y pisan `.env.production`. */
+function isLikelyApiOriginPlaceholder(url: string): boolean {
+  const u = url.trim().toLowerCase();
+  if (!u) return true;
+  return (
+    u.includes('cambia-por-tu') ||
+    u.includes('tu-dominio') ||
+    u.includes('tu-url-publica') ||
+    u.includes('change-for-your') ||
+    u.includes('your-public-api') ||
+    u.includes('example.invalid') // reservado explícito de ejemplo
+  );
+}
+
 function resolveApiOrigin() {
-  const envOrigin = (import.meta.env.VITE_API_ORIGIN ?? '').trim();
-  if (envOrigin) return envOrigin.replace(/\/$/, '');
+  let envOrigin = (import.meta.env.VITE_API_ORIGIN ?? '').trim().replace(/\/$/, '');
+  if (isLikelyApiOriginPlaceholder(envOrigin)) {
+    envOrigin = '';
+  }
+  if (envOrigin) return envOrigin;
   if (import.meta.env.DEV) {
     return '';
   }
-  if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:3030`;
-  }
-  return 'http://localhost:3030';
+  // Producción: sin URL válida (falta .env, placeholder, o VITE_* heredada del shell con valor incorrecto).
+  return NATIVE_FALLBACK_API_ORIGIN.replace(/\/$/, '');
 }
 
 const API_ORIGIN = resolveApiOrigin();
@@ -181,16 +211,17 @@ export function coerceCurrentUserProfile(raw: unknown): CurrentUserProfile {
 
 /** Persiste roles tras /auth/me para gating de UI (la API sigue siendo la autoridad). */
 export function persistUserRolesFromProfile(profile: CurrentUserProfile) {
-  localStorage.setItem('user_global_role', normalizeGlobalRole(profile.global_role) ?? '');
+  authSet('user_global_role', normalizeGlobalRole(profile.global_role) ?? '');
   try {
-    localStorage.setItem('user_department_roles', JSON.stringify(profile.department_roles ?? []));
+    authSet('user_department_roles', JSON.stringify(profile.department_roles ?? []));
   } catch {
     /* ignore */
   }
 }
 
 export function readStoredGlobalRole(): string | null {
-  const v = localStorage.getItem('user_global_role');
+  migrateLegacyDesktopAuthOnce();
+  const v = authGet('user_global_role');
   return v === null || v === '' ? null : v;
 }
 
@@ -314,6 +345,8 @@ type ChatChannel = {
   ticket_id: string | null;
   channel_type: 'ticket' | 'dm' | 'group';
   my_role?: 'admin' | 'member' | null;
+  /** Solo DM: id del otro usuario para presencia en tiempo real. */
+  dm_peer_user_id?: string | null;
   unread_count: number;
   updated_at: string;
   last_message: {
@@ -392,28 +425,21 @@ type ChatUser = {
 };
 
 function getAuthHeaders() {
-  const token = localStorage.getItem('access_token');
+  migrateLegacyDesktopAuthOnce();
+  const token = authGet('access_token');
   return token ? ({ Authorization: `Bearer ${token}` } as Record<string, string>) : {};
 }
 
 let refreshPromise: Promise<string | null> | null = null;
 
-function clearSession() {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  localStorage.removeItem('user_name');
-  localStorage.removeItem('user_id');
-  localStorage.removeItem('user_employee_id');
-  localStorage.removeItem('user_email');
-  localStorage.removeItem('user_global_role');
-  localStorage.removeItem('user_department_roles');
-  window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+export function clearSession() {
+  wipeAuthSessionFully();
 }
 
 export async function refreshAccessToken(opts?: { silent?: boolean }): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 
-  const currentRefresh = localStorage.getItem('refresh_token');
+  const currentRefresh = authGet('refresh_token');
   if (!currentRefresh) return null;
 
   refreshPromise = (async () => {
@@ -429,8 +455,8 @@ export async function refreshAccessToken(opts?: { silent?: boolean }): Promise<s
       }
 
       const data = (await response.json()) as RefreshResponse;
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
+      authSet('access_token', data.access_token);
+      authSet('refresh_token', data.refresh_token);
       if (!opts?.silent) {
         window.dispatchEvent(new CustomEvent('auth:token-refreshed'));
       }
@@ -461,8 +487,10 @@ function readJwtExpUnix(accessToken: string): number | null {
 
 /** Si el access JWT está vencido o cerca, refresca antes del próximo request (menos 401 en red). */
 async function refreshAccessIfExpiredOrNear(leewaySeconds = 90): Promise<void> {
-  const access = localStorage.getItem('access_token');
-  const refresh = localStorage.getItem('refresh_token');
+  migrateLegacyDesktopAuthOnce();
+  if (clearSessionWallClockExceeded()) return;
+  const access = authGet('access_token');
+  const refresh = authGet('refresh_token');
   if (!access || !refresh) return;
   const exp = readJwtExpUnix(access);
   if (exp == null) return;
@@ -476,16 +504,13 @@ export async function authFetch(path: string, init: RequestInit, retry = true): 
     await refreshAccessIfExpiredOrNear(90);
   }
   const headers = new Headers(init.headers);
-  const token = localStorage.getItem('access_token');
+  const token = authGet('access_token');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  } catch (error) {
-    throw new ApiError(
-      'No se pudo conectar con el servidor. Verifica la red o VITE_API_ORIGIN.',
-      0,
-    );
+  } catch {
+    throw new ApiError(`No se pudo conectar con ${API_BASE}. Revisa red, DNS o VPN.`, 0);
   }
   if (response.status === 401) {
     if (retry && !path.startsWith('/auth/')) {
@@ -521,10 +546,7 @@ async function request<T>(
     });
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
-    throw new ApiError(
-      'No se pudo conectar con el servidor. Verifica la red o VITE_API_ORIGIN.',
-      0,
-    );
+    throw new ApiError(`No se pudo conectar con ${API_BASE}. Revisa red, DNS o VPN.`, 0);
   }
 
   if (response.status === 401) {
@@ -561,6 +583,21 @@ export function getCurrentUserProfile() {
   return request<unknown>('/auth/me', 'GET').then(coerceCurrentUserProfile);
 }
 
+/** Registra token FCM del dispositivo (APK Android); requiere JWT. */
+export async function registerPushToken(body: { token: string; platform?: string }) {
+  await refreshAccessIfExpiredOrNear(90);
+  const response = await authFetch('/auth/push-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    throw buildApiError(response, data, 'No se pudo registrar el dispositivo para notificaciones push');
+  }
+  return (await response.json().catch(() => ({ ok: true }))) as { ok: true };
+}
+
 let validateSessionInflight: Promise<void> | null = null;
 
 /**
@@ -568,13 +605,15 @@ let validateSessionInflight: Promise<void> | null = null;
  * y refresh preventivo si el access JWT ya venció pero el refresh sigue válido.
  */
 export function validateSessionForApp(): Promise<void> {
-  if (!localStorage.getItem('access_token')) {
+  if (!hasStoredAccessToken()) {
     return Promise.resolve();
   }
   if (validateSessionInflight) {
     return validateSessionInflight;
   }
   validateSessionInflight = (async () => {
+    if (clearSessionWallClockExceeded()) return;
+    ensureSessionWallClockStarted();
     await refreshAccessIfExpiredOrNear(90);
     await getCurrentUserProfile();
   })()
@@ -1067,7 +1106,7 @@ export function canAccessInventoryUi(): boolean {
   const gr = readStoredGlobalRole();
   if (gr === 'auditor') return true;
   try {
-    const raw = localStorage.getItem('user_department_roles');
+    const raw = authGet('user_department_roles');
     const roles = raw ? (JSON.parse(raw) as DepartmentRoleEntry[]) : [];
     return roles.some((r) => r.role === 'supervisor' || r.role === 'tecnico_area');
   } catch {

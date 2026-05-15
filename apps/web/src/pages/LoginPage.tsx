@@ -8,6 +8,7 @@ import {
   requestOtp,
   verifyOtp,
 } from '../lib/api';
+import { persistNewLoginSession } from '../lib/authStorage';
 
 type LoginPageProps = {
   onAuthenticated: () => void;
@@ -25,16 +26,11 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [error, setError] = useState('');
 
   async function completeLoginAfterVerify(result: Awaited<ReturnType<typeof verifyOtp>>) {
-    localStorage.setItem('access_token', result.access_token);
-    localStorage.setItem('refresh_token', result.refresh_token);
-    localStorage.setItem('user_name', result.user.name);
-    localStorage.setItem('user_id', result.user.id);
-    localStorage.setItem('user_employee_id', result.user.employee_id);
-    if (result.user.email != null && result.user.email !== '') {
-      localStorage.setItem('user_email', result.user.email);
-    } else {
-      localStorage.removeItem('user_email');
-    }
+    persistNewLoginSession({
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
+      user: result.user,
+    });
     try {
       const profile = await getCurrentUserProfile();
       persistUserRolesFromProfile(profile);
@@ -42,7 +38,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       persistUserRolesFromProfile(currentUserProfileFromVerifyUser(result.user));
     }
     onAuthenticated();
-    navigate('/', { replace: true });
+    navigate('/chat', { replace: true });
   }
 
   async function onRequestOtp(event: FormEvent) {

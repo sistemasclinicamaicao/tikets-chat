@@ -35,6 +35,7 @@ model User {
   ticketAssignmentsReceived TicketAssignment[] @relation("AssignmentTo")
   hojaDeVidaSynced HojaDeVida[] @relation("HojaDeVidaSyncedBy")
   notificationLogs NotificationLog[]
+  pushTokens         UserPushToken[]
 
   @@map("users")
 }
@@ -467,6 +468,19 @@ model NotificationLog {
   template               NotificationTemplate?  @relation(fields: [notificationTemplateId], references: [id], onDelete: SetNull)
 
   @@map("notification_logs")
+}
+
+model UserPushToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String
+  platform  String   @default("android")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token], map: "user_push_tokens_user_token_unique")
+  @@map("user_push_tokens")
 }
 
 /// Credenciales cifradas en aplicación (INTEGRATIONS_ENCRYPTION_KEY). auth_type: none | bearer | api_key | basic

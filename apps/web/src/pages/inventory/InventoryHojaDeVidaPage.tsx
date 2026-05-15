@@ -21,6 +21,7 @@ import {
   updateInventoryAsset,
   uploadInventoryAssetPhoto,
 } from '../../lib/api';
+import { authGet } from '../../lib/authStorage';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { InventoryAssetModal } from './components/InventoryAssetModal';
 import { InventoryGenericTable } from './components/InventoryGenericTable';
@@ -136,7 +137,7 @@ export function InventoryHojaDeVidaPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const token = localStorage.getItem('access_token');
+    const token = authGet('access_token');
     if (!token) {
       setProfile(null);
       setDeptList([]);

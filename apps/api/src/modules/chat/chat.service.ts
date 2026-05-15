@@ -605,6 +605,7 @@ export class ChatService {
         const channel = channels.find((item) => item.id === membership.channel_id);
         if (!channel) return null;
         let channelName = channel.name ?? 'Canal';
+        let dm_peer_user_id: string | null = null;
         if (channel.channelType === 'ticket' && channel.ticket?.subject) {
           channelName = channel.ticket.subject;
         }
@@ -612,6 +613,7 @@ export class ChatService {
           const ids = (channel.name ?? '').replace('dm:', '').split(':').filter(Boolean);
           const otherUserId = ids.find((id) => id !== userId);
           if (otherUserId) {
+            dm_peer_user_id = otherUserId;
             const otherUser = await this.prisma.user.findUnique({
               where: { id: otherUserId },
               select: { name: true },
@@ -649,6 +651,7 @@ export class ChatService {
           ticket_id: channel.ticketId,
           channel_type,
           my_role,
+          dm_peer_user_id,
           unread_count,
           updated_at: channel.updatedAt.toISOString(),
         };
@@ -786,6 +789,16 @@ export class ChatService {
       LIMIT 200
     `;
     return rows.map((row) => row.channel_id);
+  }
+
+  async listChannelMemberUserIds(channelId: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ user_id: string }[]>`
+      SELECT user_id
+      FROM chat_channel_members
+      WHERE channel_id = ${channelId}
+        AND hidden_from_ui_at IS NULL
+    `;
+    return rows.map((r) => r.user_id);
   }
 
   private messageInclude() {

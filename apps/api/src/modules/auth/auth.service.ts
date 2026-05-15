@@ -7,8 +7,10 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { OtpService } from './otp.service';
 import { TokenService } from './token.service';
+import { PushNotificationsService } from '../push/push-notifications.service';
 
 const DEFAULT_OTP_BYPASS_EMPLOYEE_IDS = ['910204052230'];
 
@@ -30,6 +32,7 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly auditLog: AuditLogService,
     private readonly config: ConfigService,
+    private readonly pushNotifications: PushNotificationsService,
   ) {}
 
   private maskEmail(email: string) {
@@ -206,5 +209,9 @@ export class AuthService {
         role: r.role,
       })),
     };
+  }
+
+  async registerPushToken(userId: string, dto: RegisterPushTokenDto) {
+    return this.pushNotifications.registerToken(userId, dto.token, dto.platform);
   }
 }

@@ -1,4 +1,4 @@
-import { FormEvent, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -21,16 +21,20 @@ import {
   sendChannelMessageWithFile,
   softDeleteChatConversation,
 } from '../lib/api';
+import { authGet } from '../lib/authStorage';
 import { ensureRealtimeConnected, subscribeRealtimeStatus } from '../lib/chatRealtime';
 import {
+  getChatSoundProfile,
   getDesktopNotificationPermission,
   isChatSoundEnabled,
   notifyDesktopIfBackground,
   persistChatSoundEnabled,
-  playChatIncomingSound,
+  persistChatSoundProfile,
   playChatNudgeBuzz,
+  playIncomingChatAlert,
   requestDesktopNotificationPermission,
   triggerNudgeDeviceVibrate,
+  type ChatSoundProfile,
 } from '../lib/chatMessageAlerts';
 import type { ChatAttachment, ChatMessage, GroupMember } from '../lib/api';
 import type { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -775,8 +779,12 @@ export function ChatPage() {
   const [chatSoundEnabled, setChatSoundEnabled] = useState(() =>
     typeof window !== 'undefined' ? isChatSoundEnabled() : true,
   );
+  const chatSoundEnabledRef = useRef(chatSoundEnabled);
   const [notifPermission, setNotifPermission] = useState<'unsupported' | NotificationPermission>(() =>
     getDesktopNotificationPermission(),
+  );
+  const [soundProfile, setSoundProfile] = useState<ChatSoundProfile>(() =>
+    typeof window !== 'undefined' ? getChatSoundProfile() : 'classic',
   );
   const [users, setUsers] = useState<ChatUser[]>([]);
   /** Búsqueda en panel Canales: canales y atajos de personas. */
@@ -842,7 +850,7 @@ export function ChatPage() {
   const forwardDialogRef = useRef<HTMLDialogElement>(null);
   const previewDialogRef = useRef<HTMLDialogElement>(null);
 
-  const currentUserId = localStorage.getItem('user_id') ?? '';
+  const currentUserId = authGet('user_id') ?? '';
 
   function flashComposerHint(message: string, ms = 4000) {
     setComposerHint(message);
@@ -927,6 +935,10 @@ export function ChatPage() {
   useEffect(() => {
     mutedChannelIdsRef.current = mutedChannelIds;
   }, [mutedChannelIds]);
+
+  useEffect(() => {
+    chatSoundEnabledRef.current = chatSoundEnabled;
+  }, [chatSoundEnabled]);
 
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
@@ -1254,7 +1266,7 @@ export function ChatPage() {
         );
       });
 
-      const me = localStorage.getItem('user_id') ?? '';
+      const me = authGet('user_id') ?? '';
       if (msg.user.id !== me) {
         const channelMuted = mutedChannelIdsRef.current.includes(payload.channel_id);
         const isNudge = msg.messageType === 'nudge';
@@ -1262,23 +1274,31 @@ export function ChatPage() {
         if (isNudge) {
           if (!channelMuted) {
             fireLocalNudgeFeedback();
+            const chRowNudge = channelsRef.current.find((c) => c.id === payload.channel_id);
+            const titleNudge = formatDisplayName(chRowNudge?.name) || 'Chat';
+            if (document.visibilityState === 'hidden') {
+              notifyDesktopIfBackground(titleNudge, '🔔 Zumbido', { forceSilent: true });
+            }
             if (payload.channel_id !== active) {
-              const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
-              const title = formatDisplayName(chRow?.name) || 'Chat';
               setMessageToasts((prev) => {
                 if (prev.some((t) => t.id === msg.id)) return prev;
                 window.setTimeout(() => {
                   setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
                 }, 6000);
-                return [...prev, { id: msg.id, channelId: payload.channel_id, title, body: '🔔 Zumbido' }];
+                return [...prev, { id: msg.id, channelId: payload.channel_id, title: titleNudge, body: '🔔 Zumbido' }];
               });
             }
           }
         } else {
-          if (!channelMuted) {
-            playChatIncomingSound();
-          }
           const chRow = channelsRef.current.find((c) => c.id === payload.channel_id);
+          const bodyLower = (msg.body ?? '').toLowerCase();
+          const uname = (authGet('user_name') ?? '').trim();
+          const mention =
+            uname.length >= 3 && bodyLower.includes('@') && bodyLower.includes(uname.toLowerCase());
+          const alertKind = chRow?.channel_type === 'dm' ? 'dm' : mention ? 'mention' : 'default';
+          if (!channelMuted) {
+            playIncomingChatAlert(alertKind);
+          }
           const title = formatDisplayName(chRow?.name) || 'Chat';
           const bodyText = lastMessagePreview(msg);
           if (!channelMuted && payload.channel_id !== active) {
@@ -1291,7 +1311,7 @@ export function ChatPage() {
             });
           }
           if (!channelMuted) {
-            notifyDesktopIfBackground(title, bodyText);
+            notifyDesktopIfBackground(title, bodyText, { forceSilent: chatSoundEnabledRef.current });
           }
         }
       }
@@ -1303,7 +1323,7 @@ export function ChatPage() {
 
     function onTyping(payload: { channel_id: string; user_id: string; typing: boolean }) {
       const active = activeChannelIdRef.current;
-      const me = localStorage.getItem('user_id');
+      const me = authGet('user_id');
       if (payload.channel_id !== active || payload.user_id === me) return;
       if (payload.typing) {
         setTypingUserId(payload.user_id);
@@ -1330,7 +1350,7 @@ export function ChatPage() {
     function onVisibility() {
       setNotifPermission(getDesktopNotificationPermission());
       if (document.visibilityState !== 'visible') return;
-      if (!localStorage.getItem('access_token')) return;
+      if (!authGet('access_token')) return;
       socketRef.current?.emit('chat:sync-rooms');
       void Promise.all([getChatUsers(), getChatPresence()])
         .then(([allUsers, presence]) => {
@@ -1381,6 +1401,13 @@ export function ChatPage() {
   }, [messages, activeChannelId]);
 
   const activeChannel = channels.find((item) => item.id === activeChannelId);
+
+  const dmPeerOnline = useMemo(() => {
+    if (!activeChannel || activeChannel.channel_type !== 'dm' || !activeChannel.dm_peer_user_id) {
+      return null;
+    }
+    return onlineUserIds.includes(activeChannel.dm_peer_user_id);
+  }, [activeChannel, onlineUserIds]);
 
   useEffect(() => {
     if (!activeChannelId || activeChannel?.channel_type !== 'group') {
@@ -2036,7 +2063,7 @@ export function ChatPage() {
               <button
                 type="button"
                 className="chat-icon-btn"
-                title="Activar avisos del sistema (navegador)"
+                title="Activar avisos del sistema cuando el chat está en segundo plano (navegador o APK)"
                 aria-label="Activar avisos del sistema"
                 onClick={() => {
                   void requestDesktopNotificationPermission().then((p) => {
@@ -2057,6 +2084,21 @@ export function ChatPage() {
                 <i className="ti ti-bell-off" aria-hidden="true" />
               </span>
             ) : null}
+            <select
+              className="chat-sound-profile-select"
+              value={soundProfile}
+              onChange={(e) => {
+                const v = e.target.value as ChatSoundProfile;
+                persistChatSoundProfile(v);
+                setSoundProfile(v);
+              }}
+              aria-label="Timbre de alertas de mensaje"
+              title="Timbre de alertas (clásico, suave o ritmado)"
+            >
+              <option value="classic">Timbre clásico</option>
+              <option value="zen">Timbre suave</option>
+              <option value="pulse">Timbre ritmado</option>
+            </select>
           </div>
         </header>
         <div className="chat-app__search">
@@ -2265,14 +2307,35 @@ export function ChatPage() {
               <h2 className="chat-thread-head__title">
                 {activeChannel ? formatDisplayName(activeChannel.name) : 'Selecciona un canal'}
               </h2>
+              {dmPeerOnline !== null ? (
+                <span
+                  className={`chat-thread-head__dm-presence chat-thread-head__dm-presence--${dmPeerOnline ? 'online' : 'offline'}`}
+                  title={dmPeerOnline ? 'Contacto conectado' : 'Contacto desconectado'}
+                  aria-label={dmPeerOnline ? 'Contacto activo' : 'Contacto inactivo'}
+                  role="status"
+                />
+              ) : null}
               <span
                 className={`chat-live-dot chat-live-dot--${realtimeBadgeState}`}
                 title={realtimeBadgeTitle}
               />
               {activeChannel && realtimeBadgeState === 'live' ? (
-                <span className="chat-presence-pill" title="Tiempo real activo">
+                <span
+                  className={`chat-presence-pill${dmPeerOnline === false ? ' chat-presence-pill--inactive-peer' : ''}`}
+                  title={
+                    dmPeerOnline !== null
+                      ? dmPeerOnline
+                        ? 'El contacto aparece conectado'
+                        : 'El contacto aparece desconectado'
+                      : 'Tiempo real activo'
+                  }
+                >
                   <span className="presence-dot" aria-hidden="true" />
-                  En línea
+                  {dmPeerOnline !== null
+                    ? dmPeerOnline
+                      ? 'Contacto activo'
+                      : 'Contacto inactivo'
+                    : 'En línea'}
                 </span>
               ) : null}
             </div>

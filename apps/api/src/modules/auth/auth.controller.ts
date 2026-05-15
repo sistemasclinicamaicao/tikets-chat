@@ -5,6 +5,7 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { CurrentUser, type AuthUser } from '../../common/auth/current-user.decorator';
 
@@ -38,5 +39,11 @@ export class AuthController {
   @Post('logout')
   logout(@Body() dto: LogoutDto) {
     return this.authService.logout(dto);
+  }
+
+  @Post('push-token')
+  @UseGuards(JwtAuthGuard)
+  registerPushToken(@CurrentUser() user: AuthUser, @Body() dto: RegisterPushTokenDto) {
+    return this.authService.registerPushToken(user.userId, dto);
   }
 }

@@ -32,10 +32,19 @@ function Get-DotEnvValue {
 
 function Test-EnvApiOrigin([string]$u) {
   if (-not $u) { return $false }
-  $t = $u.Trim()
+  $t = $u.Trim().ToLowerInvariant()
   if ($t -eq '') { return $false }
   if ($t -match 'tu-dominio') { return $false }
+  if ($t -match 'cambia-por-tu') { return $false }
+  if ($t -match 'tu-url-publica') { return $false }
+  if ($t -match 'change-for-your') { return $false }
   return $true
+}
+
+# Variable de usuario/sistema con texto tutorial (pisa `.env.production` en Vite).
+if ($env:VITE_API_ORIGIN -and -not (Test-EnvApiOrigin $env:VITE_API_ORIGIN)) {
+  Write-Warning 'VITE_API_ORIGIN del entorno parece un placeholder; se ignora. Revisa variables de usuario en Windows o `.env.easypanel`.'
+  Remove-Item Env:\VITE_API_ORIGIN -ErrorAction SilentlyContinue
 }
 
 # APK/Capacitor: la URL del API va incrustada en el bundle (VITE_*). Sin esto no hay conexión al backend (p. ej. Easypanel).

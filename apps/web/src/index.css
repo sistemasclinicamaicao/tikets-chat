@@ -1401,6 +1401,20 @@ button.dashboard-header__avatar:focus-visible {
   flex-shrink: 0;
   margin-left: auto;
 }
+.chat-sound-profile-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.chat-sound-profile-select {
+  max-width: 7.5rem;
+  font-size: 0.68rem;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(248, 250, 252, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--chat-on-primary, #f8fafc);
+  min-height: 28px;
+}
 .chat-panel__title {
   margin: 0;
   flex: 1 1 auto;
@@ -1827,6 +1841,21 @@ button.chat-channel-person-result:focus-visible:not(:disabled) {
   white-space: nowrap;
   letter-spacing: -0.02em;
   line-height: 1.35;
+}
+.chat-thread-head__dm-presence {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.chat-thread-head__dm-presence--online {
+  background: var(--color-presence-online, #22c55e);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+.chat-thread-head__dm-presence--offline {
+  background: var(--color-presence-offline, #94a3b8);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35);
 }
 .chat-live-dot {
   width: 8px;
@@ -5211,6 +5240,14 @@ button.chat-channel-row:hover:not(:disabled) {
 .chat-presence-pill .presence-dot {
   width: 7px;
   height: 7px;
+}
+.chat-presence-pill--inactive-peer {
+  background: var(--color-background-tertiary);
+  color: var(--color-text-secondary);
+}
+.chat-presence-pill--inactive-peer .presence-dot {
+  background: var(--color-presence-offline, #94a3b8);
+  box-shadow: none;
 }
 .chat-ghost-btn {
   background: transparent;

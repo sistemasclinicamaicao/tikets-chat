@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { validateSessionForApp } from './lib/api';
+import { clearSessionWallClockExceeded, hasStoredAccessToken } from './lib/authStorage';
 import { ChatPage } from './pages/ChatPage';
 import { disconnectRealtime, ensureRealtimeConnected } from './lib/chatRealtime';
 import { DashboardPage } from './pages/DashboardPage';
@@ -20,7 +21,7 @@ function RedirectInventoryPcToBd() {
 }
 
 function isAuthenticated() {
-  return Boolean(localStorage.getItem('access_token'));
+  return hasStoredAccessToken();
 }
 
 export default function App() {
@@ -76,6 +77,18 @@ export default function App() {
       window.removeEventListener('auth:unauthorized', onUnauthorized);
     };
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const tick = () => {
+      if (clearSessionWallClockExceeded()) {
+        setAuthenticated(false);
+      }
+    };
+    const id = window.setInterval(tick, 60_000);
+    tick();
+    return () => window.clearInterval(id);
+  }, [authenticated]);
 
   return (
     <Routes>
@@ -146,7 +159,7 @@ export default function App() {
           }
         />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/chat" replace />} />
     </Routes>
   );
 }

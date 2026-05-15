@@ -52,11 +52,11 @@ export class TokenService {
     const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_change_me';
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
-      expiresIn: this.parseExpiresInMinutes(process.env.JWT_REFRESH_EXPIRES_IN, 7 * 24 * 60),
+      expiresIn: this.parseExpiresInMinutes(process.env.JWT_REFRESH_EXPIRES_IN, 12 * 60),
     });
 
     const decoded = this.jwtService.decode(refreshToken) as { exp?: number };
-    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 12 * 3600 * 1000);
 
     await this.prisma.refreshToken.create({
       data: {

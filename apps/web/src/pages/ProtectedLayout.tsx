@@ -9,12 +9,15 @@ import {
 import {
   ApiError,
   canAccessInventoryUi,
+  clearSession,
   getCurrentUserProfile,
   isGlobalAdminRole,
   isStoredGlobalAdmin,
   persistUserRolesFromProfile,
   type CurrentUserProfile,
 } from '../lib/api';
+import { authGet, authRemove, authSet } from '../lib/authStorage';
+import { setupNativePushWhenAuthed } from '../lib/nativePush';
 
 type ProtectedLayoutProps = {
   onLogout: () => void;
@@ -35,20 +38,20 @@ function getCurrentTheme(): 'light' | 'dark' {
 }
 
 function profileFromStorage(): CurrentUserProfile | null {
-  const id = localStorage.getItem('user_id');
-  const name = localStorage.getItem('user_name');
+  const id = authGet('user_id');
+  const name = authGet('user_name');
   if (!id || !name) return null;
   return {
     id,
-    employee_id: localStorage.getItem('user_employee_id') ?? '—',
+    employee_id: authGet('user_employee_id') ?? '—',
     name,
-    email: localStorage.getItem('user_email'),
+    email: authGet('user_email'),
     phone: null,
     job_title: null,
     dependency_name: null,
     labor_type: null,
     is_active: true,
-    global_role: localStorage.getItem('user_global_role') || null,
+    global_role: authGet('user_global_role') || null,
     department_roles: [],
   };
 }
@@ -57,7 +60,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const userName = localStorage.getItem('user_name') ?? 'Usuario';
+  const userName = authGet('user_name') ?? 'Usuario';
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(() => isStoredGlobalAdmin());
   const [showInventoryNav, setShowInventoryNav] = useState(() => canAccessInventoryUi());
   const [employeeModalOpen, setEmployeeModalOpen] = useState(false);
@@ -146,13 +149,18 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   }
 
   useEffect(() => {
-    if (!localStorage.getItem('access_token')) {
+    if (!authGet('access_token')) {
       navigate('/login', { replace: true });
     }
   }, [navigate]);
 
   useEffect(() => {
-    if (!localStorage.getItem('access_token')) return;
+    if (!authGet('access_token')) return;
+    setupNativePushWhenAuthed();
+  }, []);
+
+  useEffect(() => {
+    if (!authGet('access_token')) return;
     void getCurrentUserProfile()
       .then((profile) => {
         persistUserRolesFromProfile(profile);
@@ -201,9 +209,9 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
       persistUserRolesFromProfile(profile);
       setIsGlobalAdmin(isGlobalAdminRole(profile.global_role));
       setEmployeeProfile(profile);
-      localStorage.setItem('user_employee_id', profile.employee_id);
-      if (profile.email) localStorage.setItem('user_email', profile.email);
-      else localStorage.removeItem('user_email');
+      authSet('user_employee_id', profile.employee_id);
+      if (profile.email) authSet('user_email', profile.email);
+      else authRemove('user_email');
     } catch (err) {
       const cached = profileFromStorage();
       setEmployeeProfile(cached);
@@ -226,14 +234,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
 
   function logout() {
     disconnectRealtime('ProtectedLayout.logout');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user_name');
-    localStorage.removeItem('user_id');
-    localStorage.removeItem('user_employee_id');
-    localStorage.removeItem('user_email');
-    localStorage.removeItem('user_global_role');
-    localStorage.removeItem('user_department_roles');
+    clearSession();
     onLogout();
     navigate('/login', { replace: true });
   }

@@ -508,6 +508,13 @@ function SettingsUserAccount({
           <p className="settings-muted" style={{ marginTop: '1.25rem', marginBottom: 0 }}>
             La sesión y el acceso a tickets/chat los define el servidor según estos datos.
           </p>
+          <p className="settings-muted" style={{ marginTop: '1rem', marginBottom: 0 }}>
+            <strong>Notificaciones (navegador y APK):</strong> en el chat puedes activar avisos del sistema cuando la
+            pestaña o la app no está en primer plano. En Android, deslizar la app fuera de «recientes» suele cerrar el
+            proceso: no hay garantía de seguir recibiendo avisos locales. Con Firebase (FCM) configurado en el servidor y
+            en la APK, el backend puede enviar un push al llegar un mensaje aunque la app estuviera cerrada; el fabricante
+            o el ahorro de batería pueden seguir limitando la entrega.
+          </p>
           {!embedded ? (
             <p style={{ marginTop: '1rem' }}>
               <Link to="/">Volver al inicio</Link>

@@ -11,6 +11,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import type { JwtUserPayload } from '../../common/auth/jwt-user.payload';
+import { PushNotificationsService } from '../push/push-notifications.service';
 import { ChatService } from './chat.service';
 
 type ChatMessagePayload = Awaited<ReturnType<ChatService['sendMessage']>>;
@@ -31,6 +32,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
+    private readonly pushNotifications: PushNotificationsService,
   ) {}
 
   /** Emite un mensaje a todos los clientes unidos al canal (p. ej. envío vía REST). */
@@ -41,6 +43,38 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   broadcastChannelMessage(channelId: string, message: ChatMessagePayload) {
     this.server.to(channelId).emit('chat:message', { channel_id: channelId, message });
+    void this.sendPushForChannelMessage(channelId, message).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`FCM notify skipped/failed: ${msg}`);
+    });
+  }
+
+  private async sendPushForChannelMessage(channelId: string, message: ChatMessagePayload) {
+    const memberUserIds = await this.chatService.listChannelMemberUserIds(channelId);
+    const senderName = message.user?.name ?? 'Chat';
+    const isNudge = message.messageType === 'nudge';
+    let bodyText: string;
+    if (isNudge) {
+      bodyText = 'Zumbido';
+    } else if (message.body?.trim()) {
+      bodyText = message.body.trim().slice(0, 180);
+    } else if (message.attachments?.length) {
+      const name = message.attachments[0]?.originalName ?? 'archivo';
+      bodyText = `Archivo: ${name}`.slice(0, 180);
+    } else {
+      bodyText = 'Nuevo mensaje';
+    }
+    await this.pushNotifications.notifyChatMessage({
+      memberUserIds,
+      excludeUserId: message.userId,
+      title: senderName,
+      body: bodyText,
+      data: {
+        channel_id: channelId,
+        message_id: message.id,
+        message_type: isNudge ? 'nudge' : 'text',
+      },
+    });
   }
 
   /** Asegura que todos los sockets de los usuarios indicados estén en la sala del canal (DM nuevo, etc.). */
