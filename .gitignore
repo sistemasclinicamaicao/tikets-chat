@@ -17,7 +17,6 @@ build/
 apps/*/.env
 !apps/api/.env.example
 !apps/web/.env.example
-apps/web/.env.production
 
 # Local backups and logs
 backups/
