@@ -37,7 +37,7 @@ import {
   type ChatSoundProfile,
 } from '../lib/chatMessageAlerts';
 import type { ChatAttachment, ChatMessage, GroupMember } from '../lib/api';
-import type { EmojiClickData, Theme } from 'emoji-picker-react';
+import { Theme, type EmojiClickData } from 'emoji-picker-react';
 
 const LazyEmojiPicker = lazy(() => import('emoji-picker-react'));
 
@@ -113,12 +113,9 @@ function formatShortTime(iso: string) {
   return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
 }
 
-/** Fecha corta + hora para cabecera de burbuja de mensaje. */
-function formatMessageTimestamp(iso: string) {
-  const d = new Date(iso);
-  const datePart = d.toLocaleDateString([], { day: 'numeric', month: 'short' });
-  const timePart = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `${datePart} · ${timePart}`;
+/** Solo hora en burbujas; la fecha va en el separador central del día. */
+function formatMessageTimeOnly(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 /** Compara si dos ISO timestamps caen en el mismo día calendario local. */
@@ -163,12 +160,6 @@ function getNameInitials(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-/** Lee el tema actual del documento; usado por emoji-picker. */
-function getCurrentDocumentTheme(): 'light' | 'dark' {
-  if (typeof document === 'undefined') return 'light';
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
 /** Mapeo de getChatAttachmentIconKind() → ícono Tabler outline. */
@@ -2320,6 +2311,15 @@ export function ChatPage() {
                   <i className="ti ti-arrow-left" aria-hidden="true" />
                 </button>
               ) : null}
+              {activeChannel ? (
+                <span
+                  className="chat-thread-head__avatar"
+                  style={{ background: avatarColorFor(activeChannel.id) }}
+                  aria-hidden="true"
+                >
+                  {getNameInitials(activeChannel.name)}
+                </span>
+              ) : null}
               <h2 className="chat-thread-head__title">
                 {activeChannel ? formatDisplayName(activeChannel.name) : 'Selecciona un canal'}
               </h2>
@@ -2760,14 +2760,28 @@ export function ChatPage() {
                         <span>{formatDateDividerLabel(message.createdAt)}</span>
                       </div>
                     ) : null}
-                    <article
-                      className={mine ? 'chat-bubble chat-bubble--mine' : 'chat-bubble chat-bubble--theirs'}
+                    <div
+                      className={`chat-message-row ${mine ? 'chat-message-row--mine' : 'chat-message-row--theirs'}`}
                     >
+                      <span
+                        className="chat-message-row__avatar"
+                        style={{
+                          background: mine
+                            ? 'var(--brand-accent)'
+                            : avatarColorFor(String(message.user.id)),
+                        }}
+                        title={formatDisplayName(message.user.name)}
+                        aria-label={formatDisplayName(message.user.name)}
+                      >
+                        {getNameInitials(message.user.name)}
+                      </span>
+                      <article
+                        className={mine ? 'chat-bubble chat-bubble--mine' : 'chat-bubble chat-bubble--theirs'}
+                      >
                       <header className="chat-bubble__head">
-                        <span className="chat-bubble__author">{formatDisplayName(message.user.name)}</span>
                         <div className="chat-bubble__head-actions">
                           <time className="chat-bubble__time" dateTime={message.createdAt}>
-                            {formatMessageTimestamp(message.createdAt)}
+                            {formatMessageTimeOnly(message.createdAt)}
                           </time>
                           <MessageActionMenu
                             message={message}
@@ -2795,7 +2809,8 @@ export function ChatPage() {
                       ) : atts.length > 0 ? null : (
                         <p className="chat-bubble__body">Mensaje sin contenido</p>
                       )}
-                    </article>
+                      </article>
+                    </div>
                   </div>
                 );
               });
@@ -2859,7 +2874,7 @@ export function ChatPage() {
                     fallback={<div className="chat-emoji-popover__loading">Cargando emojis…</div>}
                   >
                     <LazyEmojiPicker
-                      theme={getCurrentDocumentTheme() as Theme}
+                      theme={Theme.LIGHT}
                       lazyLoadEmojis
                       skinTonesDisabled
                       onEmojiClick={(data: EmojiClickData) => {
@@ -2896,7 +2911,7 @@ export function ChatPage() {
               onKeyDown={onComposerKeyDown}
               onPaste={onComposerPaste}
               placeholder="Escribe un mensaje · Enter envía · Shift+Enter nueva línea"
-              rows={3}
+              rows={1}
               disabled={!activeChannelId}
               aria-label="Mensaje"
             />
@@ -2909,7 +2924,6 @@ export function ChatPage() {
             title="Enviar mensaje"
           >
             <i className="ti ti-send" aria-hidden="true" />
-            <span>Enviar</span>
           </button>
           {pendingFile ? (
             <div className="chat-pending-file">

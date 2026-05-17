@@ -1,0 +1,45 @@
+{
+  "name": "chat-tickets-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chat Tickets cliente Windows (Electron)",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.clinicamaicao.chattickets",
+    "productName": "Chat Tickets",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "spa",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "ChatTickets-Setup-${version}.${ext}",
+      "executableName": "ChatTickets",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "language": "1034"
+    }
+  }
+}

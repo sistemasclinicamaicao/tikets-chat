@@ -77,7 +77,7 @@ function buildStyles(): string {
       font-family: Arial, Helvetica, "Segoe UI", sans-serif;
       font-size: 9.5pt;
       line-height: 1.35;
-      color: #111827;
+      color: #073763;
       margin: 0;
       padding: 0 0 24mm 0;
       -webkit-font-smoothing: antialiased;
@@ -105,22 +105,22 @@ function buildStyles(): string {
       text-align: center;
       margin-bottom: 14px;
       padding: 14px 12px 16px;
-      border: 1px solid #1e293b;
+      border: 1px solid #073763;
       border-bottom-width: 3px;
-      background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+      background: linear-gradient(180deg, #ffffff 0%, #fffdf5 100%);
     }
     .hv-head .hv-line { margin: 0; line-height: 1.4; }
     .hv-head .hv-line--org {
       font-weight: 800;
       font-size: 12pt;
       letter-spacing: 0.02em;
-      color: #0f172a;
+      color: #073763;
       text-transform: uppercase;
     }
     .hv-head .hv-line--meta {
       font-weight: 600;
       font-size: 9.25pt;
-      color: #334155;
+      color: #0b5394;
       margin-top: 2px;
     }
     .hv-title {
@@ -130,9 +130,9 @@ function buildStyles(): string {
       letter-spacing: 0.06em;
       margin: 0 0 12px;
       padding: 8px 12px;
-      color: #0f172a;
-      background: #e2e8f0;
-      border: 1px solid #1e293b;
+      color: #073763;
+      background: #fde28a;
+      border: 1px solid #073763;
       border-left: none;
       border-right: none;
       text-transform: uppercase;
@@ -153,23 +153,23 @@ function buildStyles(): string {
       table-layout: fixed;
     }
     table.hv-t th, table.hv-t td {
-      border: 1px solid #0f172a;
+      border: 1px solid #073763;
       padding: 5px 6px;
       vertical-align: top;
       word-wrap: break-word;
     }
     table.hv-t-data th {
-      background: linear-gradient(180deg, #e8edf5 0%, #dce4f0 100%);
+      background: linear-gradient(180deg, #fde28a 0%, rgba(11, 83, 148, 0.12) 100%);
       font-weight: 700;
       font-size: 8.25pt;
       text-align: center;
-      color: #0f172a;
+      color: #073763;
       line-height: 1.25;
     }
     table.hv-t-data td {
       font-size: 9pt;
       background: #fff;
-      color: #111827;
+      color: #073763;
       min-height: 2.5em;
     }
     table.hv-t-data tr:nth-child(2) td { background: #fafbfc; }
@@ -180,11 +180,11 @@ function buildStyles(): string {
     table.hv-t-mant thead { display: table-header-group; }
     table.hv-t-mant tbody tr { page-break-inside: avoid; }
     table.hv-t-mant thead th {
-      background: linear-gradient(180deg, #cbd5e1 0%, #b8c4d6 100%);
+      background: linear-gradient(180deg, #f9ab00 0%, #0b5394 100%);
       font-weight: 800;
       font-size: 7.75pt;
       text-align: center;
-      color: #0f172a;
+      color: #073763;
       padding: 6px 4px;
       line-height: 1.2;
     }
@@ -207,7 +207,7 @@ function buildStyles(): string {
       padding-top: 10px;
       text-align: center;
       font-size: 8pt;
-      color: #334155;
+      color: #0b5394;
       border-top: 1px solid #cbd5e1;
     }
     .hv-print-footer .hv-pn-wrap { color: #64748b; font-weight: 600; }

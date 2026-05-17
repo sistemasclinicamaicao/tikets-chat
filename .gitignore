@@ -37,6 +37,10 @@ apps/web/android/capacitor-cordova-android-plugins/build/
 **/*.apk
 **/*.aab
 
+# Electron Windows desktop
+apps/desktop/release/
+apps/desktop/dist/
+
 # OS / IDE
 .DS_Store
 Thumbs.db

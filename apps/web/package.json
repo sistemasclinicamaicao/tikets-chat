@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:desktop": "tsc -b && vite build --base ./",
     "lint": "eslint src",
     "preview": "vite preview",
     "cap:sync:android": "npm run build && npx cap sync android",
-    "android:assemble-debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ./android-assemble-debug.ps1"
+    "android:assemble-debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ./android-assemble-debug.ps1",
+    "windows:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File ./windows-build-installer.ps1"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

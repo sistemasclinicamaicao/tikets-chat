@@ -77,12 +77,60 @@ function buildApiError(
   }
   if (response.status === 503) {
     return new ApiError(
-      'El servicio de archivos no esta disponible en este momento. Intenta de nuevo en unos segundos.',
+      'El servicio no está disponible en este momento. Intenta de nuevo en unos segundos.',
+      response.status,
+      rawMessage,
+    );
+  }
+  if (response.status === 502 || response.status === 504) {
+    const devHint =
+      import.meta.env.DEV && API_BASE.startsWith('/api')
+        ? ' Arranca el API: cd apps/api && npm run start:dev (puerto 3030).'
+        : '';
+    return new ApiError(
+      `No se pudo conectar con el servidor.${devHint}`,
+      response.status,
+      rawMessage,
+    );
+  }
+  if (response.status === 404) {
+    return new ApiError(
+      'Ruta del API no encontrada. Revisa VITE_API_ORIGIN o el proxy de desarrollo.',
+      response.status,
+      rawMessage,
+    );
+  }
+  if (response.status >= 500) {
+    return new ApiError('Error interno del servidor. Intenta de nuevo más tarde.', response.status, rawMessage);
+  }
+  if (response.status === 429) {
+    return new ApiError('Demasiados intentos. Espera un minuto e inténtalo de nuevo.', response.status, rawMessage);
+  }
+  if (import.meta.env.DEV) {
+    return new ApiError(
+      `Solicitud fallida (HTTP ${response.status}). Comprueba que el API esté en ejecución.`,
       response.status,
       rawMessage,
     );
   }
   return new ApiError(fallback, response.status, rawMessage);
+}
+
+/** Mensaje legible para formularios de login y pantallas similares. */
+export function describeApiError(err: unknown, fallback = 'No se pudo completar la solicitud'): string {
+  if (err instanceof ApiError) {
+    if (err.status === 0) {
+      return err.message;
+    }
+    if (err.message === 'Request failed' && import.meta.env.DEV) {
+      return `No se pudo contactar el API (${API_BASE}). ¿Está corriendo en el puerto 3030?`;
+    }
+    return err.message;
+  }
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
 }
 
 type RefreshResponse = {
@@ -227,6 +275,35 @@ export function readStoredGlobalRole(): string | null {
 
 export function isStoredGlobalAdmin(): boolean {
   return isGlobalAdminRole(readStoredGlobalRole());
+}
+
+const DEPARTMENT_ROLE_LABELS: Record<string, string> = {
+  supervisor: 'Supervisor de área',
+  tecnico_area: 'Técnico de área',
+  admin: 'Administrador de área',
+};
+
+export function formatDepartmentRoleLabel(role: string): string {
+  const key = role.trim().toLowerCase();
+  return DEPARTMENT_ROLE_LABELS[key] ?? role.replace(/_/g, ' ');
+}
+
+/** Etiqueta legible del rol para la tarjeta de sesión en el sidebar. */
+export function formatSessionRoleLabel(): string {
+  const global = readStoredGlobalRole();
+  if (isGlobalAdminRole(global)) return 'Administrador';
+  const normalized = normalizeGlobalRole(global);
+  if (normalized === 'auditor') return 'Auditor';
+  if (normalized) return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  try {
+    const raw = authGet('user_department_roles');
+    const roles = raw ? (JSON.parse(raw) as DepartmentRoleEntry[]) : [];
+    if (roles.length === 0) return 'Usuario';
+    const labels = [...new Set(roles.map((r) => formatDepartmentRoleLabel(r.role)))];
+    return labels.join(' · ');
+  } catch {
+    return 'Usuario';
+  }
 }
 
 /** Perfil mínimo cuando verify-otp trae roles pero /auth/me falla. */

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { validateSessionForApp } from './lib/api';
 import { clearSessionWallClockExceeded, hasStoredAccessToken } from './lib/authStorage';
@@ -28,6 +28,9 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   /** Evita montar rutas protegidas (p. ej. Tickets) hasta confirmar el token con el API. */
   const [authValidated, setAuthValidated] = useState(() => !isAuthenticated());
+  const authValidateSeqRef = useRef(0);
+  /** Tras OTP el perfil ya se validó en LoginPage; no bloquear con pantalla intermedia. */
+  const pendingLoginRef = useRef(false);
 
   useEffect(() => {
     const onStorage = () => setAuthenticated(isAuthenticated());
@@ -53,14 +56,19 @@ export default function App() {
       setAuthValidated(true);
       return;
     }
-    let cancelled = false;
-    setAuthValidated(false);
+    const fromFreshLogin = pendingLoginRef.current;
+    pendingLoginRef.current = false;
+    const seq = ++authValidateSeqRef.current;
+    if (!fromFreshLogin) {
+      setAuthValidated(false);
+    }
     void validateSessionForApp().finally(() => {
-      if (!cancelled) setAuthValidated(true);
+      if (authValidateSeqRef.current !== seq) return;
+      if (!hasStoredAccessToken()) {
+        setAuthenticated(false);
+      }
+      setAuthValidated(true);
     });
-    return () => {
-      cancelled = true;
-    };
   }, [authenticated]);
 
   useEffect(() => {
@@ -97,8 +105,9 @@ export default function App() {
         element={
           <LoginPage
             onAuthenticated={() => {
+              pendingLoginRef.current = true;
               setAuthenticated(true);
-              setAuthValidated(false);
+              setAuthValidated(true);
             }}
           />
         }

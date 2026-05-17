@@ -11,7 +11,7 @@ Monorepo: API NestJS (Prisma + PostgreSQL) y aplicación web React (Vite).
 | `Dockerfile` / `Dockerfile.web` | Imágenes Docker en raíz (API / front) para EasyPanel |
 | `scripts` | Utilidades (p. ej. respaldos) |
 
-Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md). Visión de producto (hub multi-departamento): [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md). Auditoría de código: [docs/auditoria/INFORME_2026-05.md](docs/auditoria/INFORME_2026-05.md).
+Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md). Visión de producto (hub multi-departamento): [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md). Auditoría de código: [docs/auditoria/INFORME_2026-05.md](docs/auditoria/INFORME_2026-05.md). Instalador Windows: [docs/DESKTOP_WINDOWS.md](docs/DESKTOP_WINDOWS.md).
 
 ## EasyPanel (desde GitHub)
 
@@ -36,6 +36,12 @@ Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md).
 
 ## Desarrollo local
 
+**Windows (recomendado):** doble clic en [`iniciar-desarrollo-local.bat`](iniciar-desarrollo-local.bat) en la raíz del repo. Levanta Postgres (Docker), API (`:3030`) y web (`:5173`), espera el health del API y abre el login. Si el puerto 5173 o 3030 ya está en uso, no duplica procesos; para reiniciar en limpio:
+
+```powershell
+.\scripts\iniciar-desarrollo-local.ps1 -ForzarPuertos
+```
+
 Terminal 1 — API (puerto 3030 por defecto):
 
 ```bash
@@ -51,7 +57,7 @@ npm install
 npm run dev
 ```
 
-Abre la URL que indique Vite (normalmente `http://localhost:5173`).
+Abre la URL que indique Vite (normalmente `http://localhost:5173/login`).
 
 ## Repositorio remoto
 

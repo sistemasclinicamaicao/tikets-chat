@@ -13,6 +13,7 @@ import {
   getCurrentUserProfile,
   isGlobalAdminRole,
   isStoredGlobalAdmin,
+  formatSessionRoleLabel,
   persistUserRolesFromProfile,
   type CurrentUserProfile,
 } from '../lib/api';
@@ -28,13 +29,6 @@ function getInitials(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-/** Lee el tema actual del documento; default 'light'. */
-function getCurrentTheme(): 'light' | 'dark' {
-  if (typeof document === 'undefined') return 'light';
-  const t = document.documentElement.dataset.theme;
-  return t === 'dark' ? 'dark' : 'light';
 }
 
 function profileFromStorage(): CurrentUserProfile | null {
@@ -61,6 +55,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const userName = authGet('user_name') ?? 'Usuario';
+  const [userRoleLabel, setUserRoleLabel] = useState(formatSessionRoleLabel);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(() => isStoredGlobalAdmin());
   const [showInventoryNav, setShowInventoryNav] = useState(() => canAccessInventoryUi());
   const [employeeModalOpen, setEmployeeModalOpen] = useState(false);
@@ -69,7 +64,6 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const [employeeProfileHint, setEmployeeProfileHint] = useState<string | null>(null);
   /** Submenú de Configuración (admin): segundo clic en «Configuración» lo oculta. */
   const [settingsSubnavOpen, setSettingsSubnavOpen] = useState(true);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => getCurrentTheme());
   const prevPathRef = useRef(location.pathname);
   const mobileNavToggleRef = useRef<HTMLButtonElement>(null);
   /** En ≤860px: menú lateral en cajón; cabecera del shell oculta en CSS */
@@ -123,32 +117,6 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   }, [mobileShellNarrow, mobileNavOpen]);
 
   useEffect(() => {
-    function onThemeChange(e: Event) {
-      const next = (e as CustomEvent<'light' | 'dark'>).detail;
-      if (next === 'light' || next === 'dark') setTheme(next);
-    }
-    window.addEventListener('app-theme-change', onThemeChange);
-    return () => window.removeEventListener('app-theme-change', onThemeChange);
-  }, []);
-
-  function toggleTheme() {
-    const next: 'light' | 'dark' = theme === 'dark' ? 'light' : 'dark';
-    const setter = (window as unknown as { __setAppTheme?: (t: 'light' | 'dark') => void })
-      .__setAppTheme;
-    if (typeof setter === 'function') {
-      setter(next);
-    } else {
-      document.documentElement.dataset.theme = next;
-      try {
-        localStorage.setItem('theme', next);
-      } catch {
-        /* storage indisponible */
-      }
-      setTheme(next);
-    }
-  }
-
-  useEffect(() => {
     if (!authGet('access_token')) {
       navigate('/login', { replace: true });
     }
@@ -165,9 +133,11 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
       .then((profile) => {
         persistUserRolesFromProfile(profile);
         setIsGlobalAdmin(isGlobalAdminRole(profile.global_role));
+        setUserRoleLabel(formatSessionRoleLabel());
       })
       .catch(() => {
         setIsGlobalAdmin(isStoredGlobalAdmin());
+        setUserRoleLabel(formatSessionRoleLabel());
       });
   }, []);
 
@@ -253,34 +223,6 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
           <p className="dashboard-header__subtitle">
             Conversaciones y tickets en tiempo real
           </p>
-        </div>
-        <div className="dashboard-header__actions">
-          <div className="dashboard-header__user">
-            <button
-              type="button"
-              className="dashboard-header__avatar"
-              onClick={openEmployeeModal}
-              aria-haspopup="dialog"
-              aria-expanded={employeeModalOpen}
-              aria-controls="employee-profile-dialog"
-              title="Ver datos del empleado"
-            >
-              {getInitials(userName)}
-            </button>
-            <div className="dashboard-header__user-text">
-              <span className="dashboard-header__user-label">Sesión activa</span>
-              <span className="dashboard-header__user-name">{userName}</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="dashboard-header__logout"
-            onClick={logout}
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
-          >
-            <i className="ti ti-logout dashboard-header__logout-icon" aria-hidden="true" />
-          </button>
         </div>
       </header>
 
@@ -468,20 +410,31 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
             ) : null}
           </nav>
           <div className="workspace-nav-panel__footer">
-            <button
-              type="button"
-              className="workspace-nav-panel__mobile-footer-btn workspace-nav-panel__mobile-footer-btn--profile"
-              onClick={() => {
-                closeMobileNav({ blurOnly: true });
-                void openEmployeeModal();
-              }}
-              title="Mis datos"
-              aria-label="Ver datos del empleado"
-            >
-              <i className="ti ti-user" aria-hidden="true" />
-              <span>Mi perfil</span>
-            </button>
-            <div className="workspace-nav-panel__user">
+            <div className="workspace-nav-panel__session-card">
+              <button
+                type="button"
+                className="workspace-nav-panel__logout-action"
+                onClick={() => {
+                  closeMobileNav();
+                  logout();
+                }}
+                title="Cerrar sesión"
+                aria-label="Cerrar sesión"
+              >
+                <i className="ti ti-logout" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="workspace-nav-panel__session-profile"
+                onClick={() => {
+                  closeMobileNav({ blurOnly: true });
+                  void openEmployeeModal();
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={employeeModalOpen}
+                aria-controls="employee-profile-dialog"
+                title="Ver datos del empleado"
+              >
               <span className="workspace-nav-panel__avatar-wrap">
                 <span className="workspace-nav-panel__avatar" aria-hidden="true">
                   {getInitials(userName)}
@@ -491,32 +444,13 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
                   aria-hidden="true"
                 />
               </span>
-              <span className="workspace-nav-panel__user-name" title={userName}>
-                {userName}
+              <span className="workspace-nav-panel__session-details">
+                <span className="workspace-nav-panel__session-label">Sesión activa</span>
+                <span className="workspace-nav-panel__session-name">{userName}</span>
+                <span className="workspace-nav-panel__session-role">{userRoleLabel}</span>
               </span>
+            </button>
             </div>
-            <button
-              type="button"
-              className="workspace-nav-panel__theme-toggle"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-              aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-            >
-              <i className={`ti ${theme === 'dark' ? 'ti-sun' : 'ti-moon'}`} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="workspace-nav-panel__mobile-footer-btn workspace-nav-panel__mobile-footer-btn--logout"
-              onClick={() => {
-                closeMobileNav();
-                logout();
-              }}
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <i className="ti ti-logout" aria-hidden="true" />
-              <span>Salir</span>
-            </button>
           </div>
         </aside>
         <section className="workspace-content workspace-content--app">
