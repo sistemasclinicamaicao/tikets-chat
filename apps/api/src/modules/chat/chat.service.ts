@@ -127,18 +127,49 @@ export class ChatService {
 
   /** Ids en línea restringidos a usuarios que comparten al menos un canal con `userId`. */
   async getPresenceForUser(userId: string) {
+    const map = await this.getPresenceForUsers([userId]);
+    return map.get(userId) ?? [];
+  }
+
+  /**
+   * Presencia para varios usuarios conectados en una sola consulta SQL (evita N+1 en `emitPresenceUpdate`).
+   */
+  async getPresenceForUsers(viewerUserIds: string[]): Promise<Map<string, string[]>> {
+    const unique = [...new Set(viewerUserIds.filter(Boolean))];
+    const empty = new Map<string, string[]>();
+    if (unique.length === 0) return empty;
+
     const online = new Set(this.getOnlineUserIds());
-    if (online.size === 0) return [];
-    const peers = await this.prisma.$queryRaw<{ user_id: string }[]>`
-      SELECT DISTINCT m.user_id
-      FROM chat_channel_members m
-      INNER JOIN chat_channel_members me
-        ON me.channel_id = m.channel_id AND me.user_id = ${userId}
-      WHERE m.user_id <> ${userId}
-        AND me.hidden_from_ui_at IS NULL
-    `;
-    const peerSet = new Set(peers.map((p) => p.user_id));
-    return [...online].filter((id) => peerSet.has(id));
+    for (const id of unique) {
+      empty.set(id, []);
+    }
+    if (online.size === 0) return empty;
+
+    const rows = await this.prisma.$queryRaw<{ viewer_id: string; peer_id: string }[]>(
+      Prisma.sql`
+        SELECT DISTINCT me.user_id AS viewer_id, m.user_id AS peer_id
+        FROM chat_channel_members me
+        INNER JOIN chat_channel_members m
+          ON m.channel_id = me.channel_id AND m.user_id <> me.user_id
+        WHERE me.user_id IN (${Prisma.join(unique)})
+          AND me.hidden_from_ui_at IS NULL
+      `,
+    );
+
+    const peersByViewer = new Map<string, Set<string>>();
+    for (const id of unique) {
+      peersByViewer.set(id, new Set());
+    }
+    for (const row of rows) {
+      if (!online.has(row.peer_id)) continue;
+      peersByViewer.get(row.viewer_id)?.add(row.peer_id);
+    }
+
+    const result = new Map<string, string[]>();
+    for (const id of unique) {
+      result.set(id, [...(peersByViewer.get(id) ?? [])]);
+    }
+    return result;
   }
 
   /** Ruta de `apps/api/.env` (válida con código en `src/` o `dist/`). */

@@ -816,6 +816,8 @@ export function ChatPage() {
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const chatRootRef = useRef<HTMLElement>(null);
   const typingClearTimerRef = useRef(0);
+  /** Timeouts de auto-cierre de toasts; se limpian al desmontar el efecto del socket. */
+  const toastDismissTimersRef = useRef<Map<string, number>>(new Map());
   const stickToBottomRef = useRef(true);
   const groupMembersDialogRef = useRef<HTMLDialogElement>(null);
   const createGroupInputRef = useRef<HTMLInputElement>(null);
@@ -1226,6 +1228,23 @@ export function ChatPage() {
   useEffect(() => {
     if (!socket) return;
 
+    function scheduleToastDismiss(messageId: string) {
+      const existing = toastDismissTimersRef.current.get(messageId);
+      if (existing != null) window.clearTimeout(existing);
+      const t = window.setTimeout(() => {
+        toastDismissTimersRef.current.delete(messageId);
+        setMessageToasts((p) => p.filter((toast) => toast.id !== messageId));
+      }, 6000);
+      toastDismissTimersRef.current.set(messageId, t);
+    }
+
+    function clearToastDismissTimers() {
+      for (const t of toastDismissTimersRef.current.values()) {
+        window.clearTimeout(t);
+      }
+      toastDismissTimersRef.current.clear();
+    }
+
     function onMessage(payload: { channel_id: string; message: Message }) {
       const active = activeChannelIdRef.current;
       const msg = normalizeMessage(payload.message);
@@ -1282,9 +1301,7 @@ export function ChatPage() {
             if (payload.channel_id !== active) {
               setMessageToasts((prev) => {
                 if (prev.some((t) => t.id === msg.id)) return prev;
-                window.setTimeout(() => {
-                  setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
-                }, 6000);
+                scheduleToastDismiss(msg.id);
                 return [...prev, { id: msg.id, channelId: payload.channel_id, title: titleNudge, body: '🔔 Zumbido' }];
               });
             }
@@ -1304,9 +1321,7 @@ export function ChatPage() {
           if (!channelMuted && payload.channel_id !== active) {
             setMessageToasts((prev) => {
               if (prev.some((t) => t.id === msg.id)) return prev;
-              window.setTimeout(() => {
-                setMessageToasts((p) => p.filter((t) => t.id !== msg.id));
-              }, 6000);
+              scheduleToastDismiss(msg.id);
               return [...prev, { id: msg.id, channelId: payload.channel_id, title, body: bodyText }];
             });
           }
@@ -1340,6 +1355,7 @@ export function ChatPage() {
     socket.emit('chat:sync-rooms');
 
     return () => {
+      clearToastDismissTimers();
       socket.off('chat:message', onMessage);
       socket.off('chat:presence', onPresence);
       socket.off('chat:typing', onTyping);

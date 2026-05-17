@@ -31,6 +31,11 @@ coverage/
 
 # Local Gradle caches (Capacitor / APK tooling)
 apps/web/.gradle-capcache/
+apps/web/android/.gradle/
+apps/web/android/**/build/
+apps/web/android/capacitor-cordova-android-plugins/build/
+**/*.apk
+**/*.aab
 
 # OS / IDE
 .DS_Store

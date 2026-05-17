@@ -120,10 +120,24 @@ export class TokenService {
   }
 
   async revokeToken(refreshToken: string) {
+    const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_change_me';
+    let payload: JwtUserPayload | null = null;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtUserPayload>(refreshToken, {
+        secret: refreshSecret,
+      });
+    } catch {
+      /* token inválido o expirado: no escanear hashes globales */
+    }
+
     const candidates = await this.prisma.refreshToken.findMany({
-      where: { isRevoked: false },
+      where: {
+        isRevoked: false,
+        ...(payload?.sub ? { userId: payload.sub } : {}),
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: payload?.sub ? 20 : 0,
     });
 
     for (const token of candidates) {

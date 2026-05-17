@@ -109,11 +109,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private async emitPresenceUpdate() {
+    const viewerIds: string[] = [];
+    const socketsByUser = new Map<string, Socket[]>();
     for (const socket of this.server.sockets.sockets.values()) {
       const uid = socket.data.userId as string | undefined;
       if (!uid) continue;
-      const online_user_ids = await this.chatService.getPresenceForUser(uid);
-      socket.emit('chat:presence', { online_user_ids });
+      viewerIds.push(uid);
+      const list = socketsByUser.get(uid) ?? [];
+      list.push(socket);
+      socketsByUser.set(uid, list);
+    }
+    if (viewerIds.length === 0) return;
+
+    const presenceByUser = await this.chatService.getPresenceForUsers(viewerIds);
+    for (const [uid, sockets] of socketsByUser) {
+      const online_user_ids = presenceByUser.get(uid) ?? [];
+      for (const socket of sockets) {
+        socket.emit('chat:presence', { online_user_ids });
+      }
     }
   }
 

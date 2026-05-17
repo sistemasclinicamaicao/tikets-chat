@@ -7,6 +7,8 @@
 - gestion de tickets de soporte,
 - chat interno en tiempo real (directos, grupos y chats asociados a tickets).
 
+La **vision de producto** a medio plazo es un hub unificado multi-departamento (inventario/HV en algunas areas, formularios en otras, comunicacion corporativa). Ver [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md).
+
 Esta documentacion describe arquitectura, modulos, endpoints, base de datos, despliegue local y operacion.
 
 ---

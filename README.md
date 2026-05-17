@@ -11,7 +11,7 @@ Monorepo: API NestJS (Prisma + PostgreSQL) y aplicación web React (Vite).
 | `Dockerfile` / `Dockerfile.web` | Imágenes Docker en raíz (API / front) para EasyPanel |
 | `scripts` | Utilidades (p. ej. respaldos) |
 
-Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md).
+Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md). Visión de producto (hub multi-departamento): [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md). Auditoría de código: [docs/auditoria/INFORME_2026-05.md](docs/auditoria/INFORME_2026-05.md).
 
 ## EasyPanel (desde GitHub)
 
