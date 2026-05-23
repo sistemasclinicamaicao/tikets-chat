@@ -41,10 +41,15 @@ Esta documentacion describe arquitectura, modulos, endpoints, base de datos, des
 ## 3) Estructura principal del repositorio
 
 - `apps/api`: backend NestJS y Prisma.
-- `apps/web`: frontend React/Vite.
+- `apps/web`: frontend React/Vite (SPA, Capacitor Android, build desktop).
+- `apps/desktop`: cliente Windows Electron (instalador NSIS).
+- `docs/`: guías operativas y de UI ([INDICE_DOCUMENTACION.md](docs/INDICE_DOCUMENTACION.md)).
+- `scripts/`: utilidades (`iniciar-desarrollo-local.ps1`, respaldos).
 - `infrastructure/compose`: compose de desarrollo.
 - `infrastructure/docker`: configuraciones base (nginx, postgres init, etc.).
 - `DOCUMENTOS`: insumos operativos (por ejemplo, listado de empleados para importacion).
+
+Documentación del trabajo UI y clientes (Mayo 2026): [docs/CHANGELOG_MAYO_2026.md](docs/CHANGELOG_MAYO_2026.md).
 
 ---
 
@@ -86,9 +91,11 @@ Archivo: `apps/api/src/main.ts`
 
 ### Auth (`/api/v1/auth`)
 - `POST /request-otp` — con **rate limiting** (Nest Throttler: por defecto 8 solicitudes por minuto e IP; ver `AuthController`).
-- `POST /verify-otp`
-- `POST /refresh`
+- `POST /verify-otp` — body: `{ employee_id, otp_code, device_name? }` (máx. 128 caracteres). Respuesta incluye `access_token`, `refresh_token`, `user`, `device_name`. El nombre del equipo se persiste en `RefreshToken.device_id` y en auditoría `auth.session_started`. Ver [docs/SESION_Y_EQUIPO_CLIENTE.md](docs/SESION_Y_EQUIPO_CLIENTE.md).
+- `POST /refresh` — body: `{ refresh_token, device_id? }` (opcional; el cliente reenvía el nombre de equipo almacenado).
 - `POST /logout`
+- `GET /me` [JWT] — perfil del usuario autenticado.
+- `POST /push-token` [JWT] — registro FCM (APK Android).
 
 ### Tickets (`/api/v1/tickets`) [JWT]
 - `GET /statuses`
@@ -174,21 +181,29 @@ Archivo: `apps/web/src/App.tsx`
 
 ## 6.2 Layout y UX
 
+- **Tema:** solo modo claro (`main.tsx` fija `data-theme="light"`; sin selector de tema en UI).
+- **Paleta:** azul corporativo `#0B5394` / `#073763` y dorado `#F9AB00`; divisores de layout dorados. Detalle: [docs/PALETA_COLORES_AURA.md](docs/PALETA_COLORES_AURA.md).
+
 - `ProtectedLayout` contiene:
-  - cabecera con identidad del modulo y cierre de sesion,
-  - panel vertical de navegacion (`Inicio`, `Tickets`, `Chat`),
+  - cabecera con marca del modulo (eyebrow dorado, titulo; sin cierre de sesion aqui),
+  - panel vertical de navegacion (`Inicio`, `Tickets`, `Chat`, `Inventario`, `Configuracion` segun rol),
+  - tarjeta de sesion en el pie del sidebar (nombre, rol, **equipo conectado**, logout solo icono),
   - area de contenido principal.
 
-- `ChatPage` contiene:
-  - bandeja de canales,
-  - hilo de conversacion,
-  - panel de personas (segun estado de visualizacion y viewport),
+- `ChatPage` (estilo Aura):
+  - grid tres columnas: canales (oscuro) | hilo (claro, franja dorada superior) | personas (oscuro),
+  - mensajes en fila con avatar e iniciales; hora en burbuja; separador de fecha,
+  - composer compacto (barra oscura, enviar solo icono),
   - integracion realtime via Socket.IO.
+  - Guia: [docs/UI_CHAT_Y_LAYOUT.md](docs/UI_CHAT_Y_LAYOUT.md).
 
 ## 6.3 Scripts utiles
 
 - `npm run dev`: levantar Vite.
-- `npm run build`: build de produccion (`tsc -b && vite build`).
+- `npm run build`: build de produccion web (`tsc -b && vite build`).
+- `npm run build:desktop`: build para Electron (`base: ./`, HashRouter).
+- `npm run windows:installer`: genera instalador NSIS (ver [docs/BUILD_CLIENTES.md](docs/BUILD_CLIENTES.md)).
+- `npm run cap:sync:android` / `npm run android:assemble-debug`: APK debug Android.
 - `npm run preview`: previsualizar build.
 
 ## 6.4 Variables de entorno (Vite)
@@ -238,8 +253,10 @@ Recomendacion:
 
 1. Usuario solicita OTP por documento/employee id.
 2. Backend valida usuario y emite OTP.
-3. Usuario verifica OTP y recibe access/refresh token.
-4. En frontend:
+3. Frontend resuelve nombre del equipo (`clientDevice.ts`: hostname en `.exe`, modelo en APK, etiqueta en navegador).
+4. Usuario verifica OTP; envia `device_name` opcional; recibe access/refresh token (equipo en `RefreshToken.device_id`).
+5. En frontend:
+   - sesion visible en sidebar con equipo conectado,
    - puede crear y consultar tickets,
    - abrir canal de ticket,
    - iniciar chats directos/grupos,
@@ -276,13 +293,21 @@ Recomendacion:
 
 ## 11) Registro de decisiones visuales actuales
 
-- Navegacion principal en panel vertical.
-- Estilo UI con enfoque enterprise (tokens globales, cards consistentes, botones y campos homogeneos).
-- Chat con bandeja priorizada para tickets y seccion de buzon unificado para directos/grupos.
+- Navegacion principal en panel vertical (fondo `#073763`).
+- Paleta corporativa azul + dorado; divisiones de layout en dorado translucido.
+- Tema claro unico (sin modo noche en produccion).
+- Chat estilo Aura: rails oscuros, hilo claro, mensajes con avatar, composer compacto.
+- Sesion de usuario en sidebar; header reservado a identidad del modulo.
+- Identificacion de equipo al login (ver [docs/SESION_Y_EQUIPO_CLIENTE.md](docs/SESION_Y_EQUIPO_CLIENTE.md)).
+- Cliente Windows Electron para hostname real en puestos de trabajo ([docs/DESKTOP_WINDOWS.md](docs/DESKTOP_WINDOWS.md)).
 
 ---
 
-## 12) Archivo de referencia rapida
+## 12) Indice de documentacion
+
+Listado completo de guias (UI, builds, paleta, changelog): **[docs/INDICE_DOCUMENTACION.md](docs/INDICE_DOCUMENTACION.md)**.
+
+## 13) Archivo de referencia rapida
 
 Si necesitas una guia corta para onboarding tecnico, puedes derivar una version resumida de este documento (runbook de 1 pagina) con:
 - comandos de arranque,
@@ -293,7 +318,7 @@ Si necesitas una guia corta para onboarding tecnico, puedes derivar una version 
 
 ---
 
-## 13) Auditoria tecnica del backend
+## 14) Auditoria tecnica del backend
 
 Informes detallados en la raiz del repositorio:
 

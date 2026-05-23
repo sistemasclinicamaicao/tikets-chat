@@ -71,22 +71,40 @@ export class AuthService {
     return c && c.length === 6 ? c : '000000';
   }
 
-  private async buildSessionPayload(user: UserForSession, meta: { otp_bypass?: boolean }) {
-    const tokens = await this.tokenService.issueTokens({
-      id: user.id,
-      employeeId: user.employeeId,
-      name: user.name,
-    });
+  private normalizeDeviceName(value: string | undefined): string | undefined {
+    const trimmed = value?.trim();
+    if (!trimmed) return undefined;
+    return trimmed.slice(0, 128);
+  }
+
+  private async buildSessionPayload(
+    user: UserForSession,
+    meta: { otp_bypass?: boolean; device_name?: string },
+  ) {
+    const deviceName = this.normalizeDeviceName(meta.device_name);
+    const tokens = await this.tokenService.issueTokens(
+      {
+        id: user.id,
+        employeeId: user.employeeId,
+        name: user.name,
+      },
+      deviceName,
+    );
 
     this.auditLog.record({
       action: 'auth.session_started',
       actorUserId: user.id,
       resource: 'session',
-      meta: { employee_id: user.employeeId, ...meta },
+      meta: {
+        employee_id: user.employeeId,
+        ...(deviceName ? { device_name: deviceName } : {}),
+        ...(meta.otp_bypass ? { otp_bypass: true } : {}),
+      },
     });
 
     return {
       ...tokens,
+      device_name: deviceName ?? null,
       user: {
         id: user.id,
         employee_id: user.employeeId,
@@ -156,12 +174,15 @@ export class AuthService {
       if (dto.otp_code !== magic) {
         throw new UnauthorizedException('INVALID_OTP');
       }
-      return this.buildSessionPayload(user, { otp_bypass: true });
+      return this.buildSessionPayload(user, {
+        otp_bypass: true,
+        device_name: dto.device_name,
+      });
     }
 
     await this.otpService.verifyOtp(user.id, dto.otp_code);
 
-    return this.buildSessionPayload(user, {});
+    return this.buildSessionPayload(user, { device_name: dto.device_name });
   }
 
   async refresh(dto: RefreshDto) {

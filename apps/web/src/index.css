@@ -530,6 +530,26 @@ body:not(:has(.dashboard-shell--fluid)) {
   overflow-wrap: break-word;
   white-space: normal;
 }
+.workspace-nav-panel__session-device {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  align-self: center;
+  max-width: 100%;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: var(--font-weight-regular);
+  color: rgba(235, 242, 252, 0.72);
+  line-height: 1.3;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.workspace-nav-panel__session-device .ti {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.9;
+}
 .workspace-nav-panel__logout-action {
   position: absolute;
   top: 6px;

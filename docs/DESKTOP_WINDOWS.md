@@ -29,7 +29,18 @@ El script:
 apps/desktop/release/ChatTickets-Setup-0.1.0.exe
 ```
 
-También queda la app sin instalar en `apps/desktop/release/win-unpacked/ChatTickets.exe` (útil para pruebas rápidas).
+Si la carpeta `release` está bloqueada (app abierta o antivirus), usar salida alternativa:
+
+```powershell
+cd apps\desktop
+npx electron-builder --win nsis --config.directories.output=release-build
+```
+
+→ `apps/desktop/release-build/ChatTickets-Setup-0.1.0.exe`
+
+También queda la app sin instalar en `.../win-unpacked/ChatTickets.exe` (útil para pruebas rápidas).
+
+Guía unificada de builds: [BUILD_CLIENTES.md](BUILD_CLIENTES.md).
 
 **Última build verificada en repo:** generación exitosa con `npm run dist` en `apps/desktop` tras `build:desktop` (rutas `./assets/` en `dist/index.html`, router hash `#/chat`).
 
@@ -66,6 +77,18 @@ El `.exe` generado en desarrollo **no está firmado**. Windows puede mostrar “
 | Tras login | Redirección a chat (`#/chat`) |
 | Enviar/recibir mensaje | Socket en tiempo real contra el API configurado |
 | Cerrar app y reabrir | Nueva sesión si usó `sessionStorage` (escritorio) |
+
+## Identificación del equipo (hostname)
+
+El preload expone el nombre del PC Windows para el login:
+
+- Archivo: [apps/desktop/preload.cjs](../apps/desktop/preload.cjs) — `getHostname()` vía `os.hostname()`.
+- Front: [apps/web/src/lib/clientDevice.ts](../apps/web/src/lib/clientDevice.ts) lee `window.chatTicketsDesktop.getHostname()`.
+- Tras OTP, el nombre se envía al API como `device_name` y se muestra en la tarjeta de sesión del sidebar.
+
+Detalle del flujo: [SESION_Y_EQUIPO_CLIENTE.md](SESION_Y_EQUIPO_CLIENTE.md).
+
+En **navegador web** no hay hostname real; use el `.exe` en puestos fijos si TI requiere el nombre de máquina.
 
 ## Notas técnicas
 

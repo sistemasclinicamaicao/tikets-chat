@@ -17,7 +17,8 @@ export type AuthStoredKey =
   | 'user_employee_id'
   | 'user_email'
   | 'user_global_role'
-  | 'user_department_roles';
+  | 'user_department_roles'
+  | 'session_device_name';
 
 export const SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 
@@ -31,6 +32,7 @@ const SESSION_KEYS: AuthStoredKey[] = [
   'user_email',
   'user_global_role',
   'user_department_roles',
+  'session_device_name',
 ];
 
 let legacyMigratePassDone = false;
@@ -121,6 +123,7 @@ export function hasStoredAccessToken(): boolean {
 export function persistNewLoginSession(tokens: {
   access_token: string;
   refresh_token: string;
+  device_name?: string | null;
   user: {
     id: string;
     name: string;
@@ -141,6 +144,12 @@ export function persistNewLoginSession(tokens: {
     authRemove('user_email');
   }
   authSet('session_started_at', String(Date.now()));
+  const deviceName = tokens.device_name?.trim();
+  if (deviceName) {
+    authSet('session_device_name', deviceName);
+  } else {
+    authRemove('session_device_name');
+  }
 }
 
 /** Marca tiempo de sesión cuando ya hay JWT pero falta marca (retrocompatibilidad). */

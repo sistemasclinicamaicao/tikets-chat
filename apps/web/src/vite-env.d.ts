@@ -1,5 +1,15 @@
 /// <reference types="vite/client" />
 
+interface ChatTicketsDesktopBridge {
+  platform: string;
+  version: string;
+  getHostname?: () => string;
+}
+
+interface Window {
+  chatTicketsDesktop?: ChatTicketsDesktopBridge;
+}
+
 interface ImportMetaEnv {
   /** Origen base del backend Nest (mismo host que Socket.IO). */
   readonly VITE_API_ORIGIN?: string;

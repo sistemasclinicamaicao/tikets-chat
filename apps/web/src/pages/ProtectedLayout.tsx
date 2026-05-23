@@ -55,6 +55,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const userName = authGet('user_name') ?? 'Usuario';
+  const sessionDeviceName = authGet('session_device_name')?.trim() ?? '';
   const [userRoleLabel, setUserRoleLabel] = useState(formatSessionRoleLabel);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(() => isStoredGlobalAdmin());
   const [showInventoryNav, setShowInventoryNav] = useState(() => canAccessInventoryUi());
@@ -448,6 +449,12 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
                 <span className="workspace-nav-panel__session-label">Sesión activa</span>
                 <span className="workspace-nav-panel__session-name">{userName}</span>
                 <span className="workspace-nav-panel__session-role">{userRoleLabel}</span>
+                {sessionDeviceName ? (
+                  <span className="workspace-nav-panel__session-device" title="Equipo conectado">
+                    <i className="ti ti-device-laptop" aria-hidden="true" />
+                    {sessionDeviceName}
+                  </span>
+                ) : null}
               </span>
             </button>
             </div>

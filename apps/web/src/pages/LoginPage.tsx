@@ -12,6 +12,7 @@ import {
   verifyOtp,
 } from '../lib/api';
 import { persistNewLoginSession } from '../lib/authStorage';
+import { resolveClientDeviceName } from '../lib/clientDevice';
 import {
   loadRememberedLoginAccounts,
   RememberedLoginAccount,
@@ -94,11 +95,15 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setError('');
   }
 
-  async function completeLoginAfterVerify(result: Awaited<ReturnType<typeof verifyOtp>>) {
+  async function completeLoginAfterVerify(
+    result: Awaited<ReturnType<typeof verifyOtp>>,
+    deviceName: string,
+  ) {
     rememberAccount(result.user.employee_id, result.user.name);
     persistNewLoginSession({
       access_token: result.access_token,
       refresh_token: result.refresh_token,
+      device_name: result.device_name ?? deviceName,
       user: result.user,
     });
     try {
@@ -120,8 +125,9 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       const result = await requestOtp(trimmedEmployeeId);
       rememberAccount(result.employee_id, result.employee_name);
       if (result.otp_bypass && result.bypass_verify_code) {
-        const verified = await verifyOtp(trimmedEmployeeId, result.bypass_verify_code);
-        await completeLoginAfterVerify(verified);
+        const deviceName = await resolveClientDeviceName();
+        const verified = await verifyOtp(trimmedEmployeeId, result.bypass_verify_code, deviceName);
+        await completeLoginAfterVerify(verified, deviceName);
         return;
       }
       setStep('verify');
@@ -160,8 +166,9 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setError('');
     setLoading(true);
     try {
-      const result = await verifyOtp(trimmedEmployeeId, otpCode.trim());
-      await completeLoginAfterVerify(result);
+      const deviceName = await resolveClientDeviceName();
+      const result = await verifyOtp(trimmedEmployeeId, otpCode.trim(), deviceName);
+      await completeLoginAfterVerify(result, deviceName);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError('El OTP es inválido o expiró. Solicita uno nuevo.');

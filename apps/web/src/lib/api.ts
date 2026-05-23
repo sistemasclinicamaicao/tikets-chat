@@ -157,6 +157,7 @@ export type DepartmentRoleEntry = {
 type VerifyOtpResponse = {
   access_token: string;
   refresh_token: string;
+  device_name?: string | null;
   user: {
     id: string;
     employee_id: string;
@@ -521,10 +522,14 @@ export async function refreshAccessToken(opts?: { silent?: boolean }): Promise<s
 
   refreshPromise = (async () => {
     try {
+      const deviceId = authGet('session_device_name')?.trim();
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: currentRefresh }),
+        body: JSON.stringify({
+          refresh_token: currentRefresh,
+          ...(deviceId ? { device_id: deviceId } : {}),
+        }),
       });
       if (!response.ok) {
         if (response.status === 401) clearSession();
@@ -652,8 +657,14 @@ export function requestOtp(employee_id: string) {
   return request<RequestOtpResponse>('/auth/request-otp', 'POST', { employee_id });
 }
 
-export function verifyOtp(employee_id: string, otp_code: string) {
-  return request<VerifyOtpResponse>('/auth/verify-otp', 'POST', { employee_id, otp_code });
+export function verifyOtp(employee_id: string, otp_code: string, device_name?: string) {
+  const body: { employee_id: string; otp_code: string; device_name?: string } = {
+    employee_id,
+    otp_code,
+  };
+  const trimmedDevice = device_name?.trim();
+  if (trimmedDevice) body.device_name = trimmedDevice;
+  return request<VerifyOtpResponse>('/auth/verify-otp', 'POST', body);
 }
 
 export function getCurrentUserProfile() {

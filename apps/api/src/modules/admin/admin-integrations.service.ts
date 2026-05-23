@@ -72,7 +72,12 @@ function headersForProbe(authType: AuthType, plain: Record<string, unknown>): Re
   return h;
 }
 
-const PROBE_BODY_MAX_BYTES = 1024 * 1024;
+/** Límite al leer respuestas de integraciones externas (sondeo e inventario). Por defecto 100 MB. */
+function probeBodyMaxBytes(): number {
+  const mb = Number.parseInt(process.env.INTEGRATIONS_PROBE_BODY_MAX_MB ?? '', 10);
+  if (Number.isFinite(mb) && mb > 0) return Math.floor(mb) * 1024 * 1024;
+  return 100 * 1024 * 1024;
+}
 
 function concatUint8Arrays(parts: Uint8Array[]): Uint8Array {
   const len = parts.reduce((a, b) => a + b.length, 0);
@@ -436,7 +441,7 @@ export class AdminIntegrationsService {
         return { ...base };
       }
 
-      const { text, truncated } = await readResponseBodyWithLimit(res, PROBE_BODY_MAX_BYTES);
+      const { text, truncated } = await readResponseBodyWithLimit(res, probeBodyMaxBytes());
       if (truncated) {
         return {
           ...base,

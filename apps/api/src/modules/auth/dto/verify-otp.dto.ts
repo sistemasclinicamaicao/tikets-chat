@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsString, Length, MinLength } from 'class-validator';
+import { IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
 
 export class VerifyOtpDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -11,4 +11,11 @@ export class VerifyOtpDto {
   @IsString()
   @Length(6, 6)
   otp_code!: string;
+
+  /** Nombre del equipo o dispositivo cliente (hostname, modelo, etc.). */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  device_name?: string;
 }

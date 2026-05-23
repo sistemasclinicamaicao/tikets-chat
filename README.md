@@ -7,11 +7,26 @@ Monorepo: API NestJS (Prisma + PostgreSQL) y aplicación web React (Vite).
 | Ruta | Descripción |
 |------|-------------|
 | `apps/api` | Backend REST, WebSockets (chat), Prisma |
-| `apps/web` | Frontend SPA |
+| `apps/web` | Frontend SPA (Vite + React) |
+| `apps/desktop` | Cliente Windows (Electron + instalador NSIS) |
 | `Dockerfile` / `Dockerfile.web` | Imágenes Docker en raíz (API / front) para EasyPanel |
-| `scripts` | Utilidades (p. ej. respaldos) |
+| `scripts` | Utilidades (desarrollo local, respaldos) |
+| `docs` | Guías UI, paleta, builds, sesión/dispositivo |
 
-Documentación ampliada: [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md). Visión de producto (hub multi-departamento): [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md). Auditoría de código: [docs/auditoria/INFORME_2026-05.md](docs/auditoria/INFORME_2026-05.md). Instalador Windows: [docs/DESKTOP_WINDOWS.md](docs/DESKTOP_WINDOWS.md).
+### Documentación
+
+| Tema | Enlace |
+|------|--------|
+| Índice completo | [docs/INDICE_DOCUMENTACION.md](docs/INDICE_DOCUMENTACION.md) |
+| Proyecto (arquitectura) | [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md) |
+| Cambios UI Mayo 2026 | [docs/CHANGELOG_MAYO_2026.md](docs/CHANGELOG_MAYO_2026.md) |
+| Paleta y UI chat | [docs/PALETA_COLORES_AURA.md](docs/PALETA_COLORES_AURA.md), [docs/UI_CHAT_Y_LAYOUT.md](docs/UI_CHAT_Y_LAYOUT.md) |
+| Equipo al login | [docs/SESION_Y_EQUIPO_CLIENTE.md](docs/SESION_Y_EQUIPO_CLIENTE.md) |
+| Build `.exe` / APK | [docs/BUILD_CLIENTES.md](docs/BUILD_CLIENTES.md) |
+| Windows desktop | [docs/DESKTOP_WINDOWS.md](docs/DESKTOP_WINDOWS.md) |
+| Despliegue | [DEPLOY_EASYPANEL.md](DEPLOY_EASYPANEL.md) |
+| Visión producto | [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md) |
+| Auditoría | [docs/auditoria/INFORME_2026-05.md](docs/auditoria/INFORME_2026-05.md) |
 
 ## EasyPanel (desde GitHub)
 
