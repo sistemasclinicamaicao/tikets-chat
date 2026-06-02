@@ -101,7 +101,15 @@ function buildApiError(
     );
   }
   if (response.status >= 500) {
-    return new ApiError('Error interno del servidor. Intenta de nuevo más tarde.', response.status, rawMessage);
+    const devHint =
+      import.meta.env.DEV && API_BASE.startsWith('/api')
+        ? ' Si solo abriste la web (:5173), arranca el API en :3030 (apps/api → npm run start:dev).'
+        : '';
+    return new ApiError(
+      `Error interno del servidor.${devHint}`,
+      response.status,
+      rawMessage,
+    );
   }
   if (response.status === 429) {
     return new ApiError('Demasiados intentos. Espera un minuto e inténtalo de nuevo.', response.status, rawMessage);
@@ -185,7 +193,10 @@ export type CurrentUserProfile = {
   has_presentation_avatar?: boolean;
 };
 
-const KNOWN_GLOBAL_ROLES = new Set(['admin', 'auditor']);
+const KNOWN_GLOBAL_ROLES = new Set(['admin', 'auditor', 'usuario_general']);
+
+/** Rol global: solo chat + departamentos asignados. */
+export const GLOBAL_ROLE_USUARIO_GENERAL = 'usuario_general' as const;
 
 /** Canonifica rol global (trim + minúsculas para valores conocidos). */
 export function normalizeGlobalRole(value: string | null | undefined): string | null {
@@ -199,6 +210,19 @@ export function normalizeGlobalRole(value: string | null | undefined): string | 
 
 export function isGlobalAdminRole(role: string | null | undefined): boolean {
   return normalizeGlobalRole(role) === 'admin';
+}
+
+export function isUsuarioGeneralRole(role: string | null | undefined): boolean {
+  return normalizeGlobalRole(role) === GLOBAL_ROLE_USUARIO_GENERAL;
+}
+
+function readStoredDepartmentRoles(): DepartmentRoleEntry[] {
+  try {
+    const raw = authGet('user_department_roles');
+    return raw ? (JSON.parse(raw) as DepartmentRoleEntry[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Normaliza /auth/me ante snake_case, camelCase o arrays ausentes (evita crashes en la UI). */
@@ -304,10 +328,10 @@ export function formatSessionRoleLabel(): string {
   if (isGlobalAdminRole(global)) return 'Administrador';
   const normalized = normalizeGlobalRole(global);
   if (normalized === 'auditor') return 'Auditor';
+  if (isUsuarioGeneralRole(normalized)) return 'Usuarios generales';
   if (normalized) return normalized.charAt(0).toUpperCase() + normalized.slice(1);
   try {
-    const raw = authGet('user_department_roles');
-    const roles = raw ? (JSON.parse(raw) as DepartmentRoleEntry[]) : [];
+    const roles = readStoredDepartmentRoles();
     if (roles.length === 0) return 'Usuario';
     const labels = [...new Set(roles.map((r) => formatDepartmentRoleLabel(r.role)))];
     return labels.join(' · ');
@@ -872,6 +896,7 @@ export type GthComunicacionesRecordRow = {
   estado: string;
   area: string;
   tipo_contrato: string;
+  fecha_ingreso: string;
   is_active: boolean;
   has_photo: boolean;
   photo_attachment_id: string | null;
@@ -1401,7 +1426,7 @@ export function adminListUsers(opts?: {
   skip?: number;
   take?: number;
   q?: string;
-  global_role?: 'admin' | 'auditor' | 'none';
+  global_role?: 'admin' | 'auditor' | 'usuario_general' | 'none';
   is_active?: boolean;
 }) {
   const q = new URLSearchParams();
@@ -1509,7 +1534,10 @@ export function postAdminGthSyncUsers(signal?: AbortSignal) {
   );
 }
 
-export function adminUpdateUserGlobalRole(userId: string, global_role: 'admin' | 'auditor' | null) {
+export function adminUpdateUserGlobalRole(
+  userId: string,
+  global_role: 'admin' | 'auditor' | 'usuario_general' | null,
+) {
   return request<{ ok: boolean }>(`/admin/users/${userId}/global-role`, 'PATCH', { global_role });
 }
 
@@ -1590,13 +1618,15 @@ export function canAccessInventoryUi(): boolean {
   if (isStoredGlobalAdmin()) return true;
   const gr = readStoredGlobalRole();
   if (gr === 'auditor') return true;
-  try {
-    const raw = authGet('user_department_roles');
-    const roles = raw ? (JSON.parse(raw) as DepartmentRoleEntry[]) : [];
-    return roles.some((r) => hasOperationalDepartmentRole(r.role));
-  } catch {
-    return false;
+  if (isUsuarioGeneralRole(gr)) {
+    return readStoredDepartmentRoles().length > 0;
   }
+  return readStoredDepartmentRoles().some((r) => hasOperationalDepartmentRole(r.role));
+}
+
+/** Usuario restringido: solo chat + departamentos asignados (sin inicio/tickets). */
+export function isRestrictedToChatAndDepartments(role?: string | null): boolean {
+  return isUsuarioGeneralRole(role ?? readStoredGlobalRole());
 }
 
 export function filterDepartmentsForInventory(
@@ -1605,6 +1635,10 @@ export function filterDepartmentsForInventory(
 ): TicketDepartmentOption[] {
   if (isGlobalAdminRole(profile.global_role) || normalizeGlobalRole(profile.global_role) === 'auditor') {
     return allDepts;
+  }
+  if (isUsuarioGeneralRole(profile.global_role)) {
+    const allowed = new Set((profile.department_roles ?? []).map((r) => r.department_id));
+    return allDepts.filter((d) => allowed.has(d.id));
   }
   const allowed = new Set(
     (profile.department_roles ?? [])

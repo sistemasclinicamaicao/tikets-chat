@@ -1,4 +1,4 @@
-type GlobalRoleFilter = '' | 'admin' | 'auditor' | 'none';
+type GlobalRoleFilter = '' | 'admin' | 'auditor' | 'usuario_general' | 'none';
 type ActiveFilter = '' | 'true' | 'false';
 
 type Props = {
@@ -53,6 +53,7 @@ export function SettingsSystemUsersToolbar({
           <option value="">Todos</option>
           <option value="admin">Administrador</option>
           <option value="auditor">Auditor</option>
+          <option value="usuario_general">Usuarios generales</option>
           <option value="none">Sin rol global</option>
         </select>
       </label>

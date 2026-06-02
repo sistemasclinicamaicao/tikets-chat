@@ -123,7 +123,10 @@ export function SettingsSystemUsersPane({ onMessage }: Props) {
 
   async function saveGlobalRole() {
     if (!selected) return;
-    const gr = globalRoleDraft === '' ? null : (globalRoleDraft as 'admin' | 'auditor');
+    const gr =
+      globalRoleDraft === ''
+        ? null
+        : (globalRoleDraft as 'admin' | 'auditor' | 'usuario_general');
     setSavingGlobal(true);
     setDetailToast(emptyToast);
     try {

@@ -10,8 +10,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SetUserDepartmentRolesDto } from './dto/set-user-department-roles.dto';
 import { UpdateUserGlobalRoleDto } from './dto/update-user-global-role.dto';
 import { isAssignableDepartmentRole } from '../../common/auth/department-access.util';
+import { GLOBAL_ROLES } from '../../common/auth/jwt-user.payload';
 
-const ALLOWED_GLOBAL = new Set(['admin', 'auditor']);
+const ALLOWED_GLOBAL = new Set<string>([
+  GLOBAL_ROLES.ADMIN,
+  GLOBAL_ROLES.AUDITOR,
+  GLOBAL_ROLES.USUARIO_GENERAL,
+]);
 
 @Injectable()
 export class AdminUsersService {
@@ -24,7 +29,7 @@ export class AdminUsersService {
     skip?: number;
     take?: number;
     q?: string;
-    global_role?: 'admin' | 'auditor' | 'none';
+    global_role?: 'admin' | 'auditor' | 'usuario_general' | 'none';
     is_active?: boolean;
   }) {
     const safeTake = Math.min(Math.max(opts?.take ?? 50, 1), 200);
@@ -51,7 +56,11 @@ export class AdminUsersService {
 
     if (opts?.global_role === 'none') {
       where.globalRole = null;
-    } else if (opts?.global_role === 'admin' || opts?.global_role === 'auditor') {
+    } else if (
+      opts?.global_role === 'admin' ||
+      opts?.global_role === 'auditor' ||
+      opts?.global_role === 'usuario_general'
+    ) {
       where.globalRole = opts.global_role;
     }
 

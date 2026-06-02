@@ -5,6 +5,11 @@ import { hasOperationalRoleInDepartment } from '../../common/auth/department-acc
 
 export function assertInventoryDepartmentAccess(user: UserPayload, departmentId: string): void {
   if (user.global_role === GLOBAL_ROLES.ADMIN || user.global_role === GLOBAL_ROLES.AUDITOR) return;
+  if (user.global_role === GLOBAL_ROLES.USUARIO_GENERAL) {
+    const allowed = (user.department_roles ?? []).some((d) => d.departmentId === departmentId);
+    if (allowed) return;
+    throw new ForbiddenException('No tiene permiso para este departamento');
+  }
   if (hasOperationalRoleInDepartment(user, departmentId)) return;
   throw new ForbiddenException('No tiene permiso para inventario en este departamento');
 }

@@ -18,6 +18,8 @@ export type UserPayload = JwtUserPayload & { userId: string };
 export const GLOBAL_ROLES = {
   ADMIN: 'admin',
   AUDITOR: 'auditor',
+  /** Solo chat + departamentos asignados (sin tickets ni configuración). */
+  USUARIO_GENERAL: 'usuario_general',
 } as const;
 
 export const DEPARTMENT_ROLES = {

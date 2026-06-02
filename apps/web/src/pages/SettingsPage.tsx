@@ -459,7 +459,9 @@ function SettingsUserAccount({
                   ? 'Administrador'
                   : normalizeGlobalRole(profile.global_role) === 'auditor'
                     ? 'Auditor'
-                    : profile.global_role ?? '—'}
+                    : normalizeGlobalRole(profile.global_role) === 'usuario_general'
+                      ? 'Usuarios generales'
+                      : profile.global_role ?? '—'}
               </dd>
             </div>
           </dl>

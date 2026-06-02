@@ -48,15 +48,27 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     let cancelled = false;
-    fetch(`${API_BASE}/health`, { method: 'GET' })
-      .then((r) => {
-        if (!cancelled) setApiReachable(r.ok);
-      })
-      .catch(() => {
-        if (!cancelled) setApiReachable(false);
-      });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const probe = () => {
+      fetch(`${API_BASE}/health`, { method: 'GET' })
+        .then((r) => {
+          if (cancelled) return;
+          const ok = r.ok;
+          setApiReachable(ok);
+          if (!ok) timer = setTimeout(probe, 2500);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setApiReachable(false);
+          timer = setTimeout(probe, 2500);
+        });
+    };
+
+    probe();
     return () => {
       cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
     };
   }, []);
 
@@ -291,7 +303,10 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
               {apiReachable === false && !error ? (
                 <p className="messenger-login__meta messenger-login__meta--warn">
-                  No hay conexión con el API ({API_BASE}). Inicia el backend en el puerto 3030.
+                  El backend no responde en el puerto <strong>3030</strong> (la web en :5173 solo
+                  reenvía {API_BASE}). Ejecuta <code>iniciar-desarrollo-local.bat</code> o{' '}
+                  <code>{'cd apps\\api && npm run start:dev'}</code> y espera unos segundos; esta
+                  pantalla se actualizará sola.
                 </p>
               ) : null}
               {error ? <p className="error messenger-login__error">{error}</p> : null}

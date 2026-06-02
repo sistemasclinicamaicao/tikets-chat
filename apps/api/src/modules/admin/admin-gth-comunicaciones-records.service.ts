@@ -18,6 +18,7 @@ import {
   normalizeGthDocumentId,
   pickGthDocumentId,
   pickGthEstadoLabel,
+  pickGthFingreso,
   resolveGthFieldValue,
 } from './admin-gth-row.util';
 
@@ -45,6 +46,7 @@ export type GthComunicacionesRecordRow = {
   estado: string;
   area: string;
   tipo_contrato: string;
+  fecha_ingreso: string;
   is_active: boolean;
   has_photo: boolean;
   photo_attachment_id: string | null;
@@ -168,9 +170,12 @@ export class AdminGthComunicacionesRecordsService {
     }
 
     if (query.hasPhoto === 'true') {
-      where.OR = [{ photoData: { not: null } }, { photoAttachmentId: { not: null } }];
+      where.OR = [{ photoSizeBytes: { gt: 0 } }, { photoAttachmentId: { not: null } }];
     } else if (query.hasPhoto === 'false') {
-      where.AND = [{ photoData: null }, { photoAttachmentId: null }];
+      where.AND = [
+        { OR: [{ photoSizeBytes: null }, { photoSizeBytes: 0 }] },
+        { photoAttachmentId: null },
+      ];
     }
 
     const q = query.q?.trim().toLowerCase() ?? '';
@@ -178,7 +183,21 @@ export class AdminGthComunicacionesRecordsService {
     const rows = await this.prisma.gthComunicacionesRecord.findMany({
       where,
       orderBy: [{ fullName: 'asc' }],
-      include: {
+      select: {
+        id: true,
+        externalRowKey: true,
+        documentId: true,
+        fullName: true,
+        cargo: true,
+        payload: true,
+        isActive: true,
+        photoAttachmentId: true,
+        photoSizeBytes: true,
+        photoUploadedAt: true,
+        photoMimeType: true,
+        photoFileName: true,
+        lastSyncedAt: true,
+        createdAt: true,
         photoAttachment: { select: { id: true, mimeType: true } },
       },
     });
@@ -228,6 +247,7 @@ export class AdminGthComunicacionesRecordsService {
       record.area,
       record.estado,
       record.tipo_contrato,
+      record.fecha_ingreso,
     ]
       .join(' ')
       .toLowerCase();
@@ -281,11 +301,15 @@ export class AdminGthComunicacionesRecordsService {
   }
 
   private recordHasPhoto(row: {
-    photoData: Uint8Array | Buffer | null;
+    photoData?: Uint8Array | Buffer | null;
     photoAttachmentId: string | null;
+    photoSizeBytes?: number | null;
   }): boolean {
-    const hasDbPhoto = row.photoData != null && row.photoData.length > 0;
-    return hasDbPhoto || Boolean(row.photoAttachmentId);
+    if (row.photoAttachmentId) return true;
+    if ((row.photoSizeBytes ?? 0) > 0) return true;
+    if (row.photoData == null) return false;
+    const byteLen = Buffer.isBuffer(row.photoData) ? row.photoData.length : row.photoData.length;
+    return byteLen > 0;
   }
 
   private toRecordRow(row: {
@@ -297,7 +321,8 @@ export class AdminGthComunicacionesRecordsService {
     payload: unknown;
     isActive: boolean;
     photoAttachmentId: string | null;
-    photoData: Uint8Array | Buffer | null;
+    photoData?: Uint8Array | Buffer | null;
+    photoSizeBytes?: number | null;
     photoUploadedAt: Date | null;
     lastSyncedAt: Date;
     createdAt: Date;
@@ -306,6 +331,7 @@ export class AdminGthComunicacionesRecordsService {
     const payload = (row.payload ?? {}) as Record<string, unknown>;
     const fullName = buildGthEmployeeFullName(payload);
     const cargo = resolveGthFieldValue(payload, 'CARGO');
+    const hasPhoto = this.recordHasPhoto(row);
     return {
       id: row.id,
       external_row_key: row.externalRowKey,
@@ -315,10 +341,11 @@ export class AdminGthComunicacionesRecordsService {
       estado: pickGthEstadoLabel(payload),
       area: resolveGthFieldValue(payload, 'AREA') || '—',
       tipo_contrato: resolveGthFieldValue(payload, 'TIPOCONTRATO') || '—',
+      fecha_ingreso: pickGthFingreso(payload),
       is_active: row.isActive,
-      has_photo: this.recordHasPhoto(row),
-      photo_attachment_id: row.photoAttachmentId,
-      photo_uploaded_at: row.photoUploadedAt?.toISOString() ?? null,
+      has_photo: hasPhoto,
+      photo_attachment_id: hasPhoto ? row.photoAttachmentId : null,
+      photo_uploaded_at: hasPhoto ? (row.photoUploadedAt?.toISOString() ?? null) : null,
       last_synced_at: row.lastSyncedAt.toISOString(),
       created_at: row.createdAt.toISOString(),
     };
@@ -423,7 +450,7 @@ export class AdminGthComunicacionesRecordsService {
       where: {
         AND: [
           {
-            OR: [{ photoData: { not: null } }, { photoAttachmentId: { not: null } }],
+            OR: [{ photoSizeBytes: { gt: 0 } }, { photoAttachmentId: { not: null } }],
           },
           {
             OR: candidates.flatMap((candidate) => [
@@ -457,7 +484,7 @@ export class AdminGthComunicacionesRecordsService {
       where: {
         AND: [
           {
-            OR: [{ photoData: { not: null } }, { photoAttachmentId: { not: null } }],
+            OR: [{ photoSizeBytes: { gt: 0 } }, { photoAttachmentId: { not: null } }],
           },
           {
             OR: candidates.flatMap((candidate) => [

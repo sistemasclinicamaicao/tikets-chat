@@ -33,6 +33,15 @@ const GTH_FIELD_ALIAS_KEYS: Partial<Record<string, readonly string[]>> = {
   CARGO: ['PUESTO', 'CARGOEMPLEADO', 'NOMBRECARGO', 'DESCRIPCIONCARGO', 'ROL'],
   TIPOCONTRATO: ['TIPO_CONTRATO', 'TIPOCONTRATACION', 'MODALIDADCONTRATO', 'CONTRATO'],
   AREA: ['DEPENDENCIA', 'NOMBREAREA', 'NOMBRE_AREA', 'DEPARTAMENTO', 'SEDE', 'SUBAREA', 'UNIDAD'],
+  FINGRESO: [
+    'FECHAINGRESO',
+    'FECHAINGRESOEMPRESA',
+    'FECHA_INGRESO',
+    'FECHA INGRESO',
+    'INGRESO',
+    'FINGRESOEMPRESA',
+    'FECHAINGRESOEMP',
+  ],
   ESTADO: ['ESTADOEMPLEADO', 'ESTADOLABORAL', 'ESTADOTRABAJADOR', 'VINCULACION'],
   EMAIL: ['CORREO', 'MAIL', 'CORREOELECTRONICO', 'EMAILCORPORATIVO', 'CORREOCORPORATIVO', 'CORREO_ELECTRONICO'],
   TELEFONOS: ['TELEFONO', 'PHONE', 'TEL'],
@@ -228,6 +237,38 @@ export function isGthEmployeeActiveByEstado(row: Record<string, unknown>): boole
 
 export function pickGthEstadoLabel(row: Record<string, unknown>): string {
   return resolveGthFieldValue(row, 'ESTADO') || '—';
+}
+
+/** Fecha de ingreso (FINGRESO) formateada para listados. */
+export function formatGthFingresoDisplay(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '—';
+  const iso = Date.parse(s);
+  if (!Number.isNaN(iso)) {
+    return new Date(iso).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  }
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) {
+    let year = Number(m[3]);
+    if (year < 100) year += year < 50 ? 2000 : 1900;
+    const d = new Date(year, Number(m[2]) - 1, Number(m[1]));
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    }
+  }
+  return s;
+}
+
+export function pickGthFingreso(row: Record<string, unknown>): string {
+  return formatGthFingresoDisplay(resolveGthFieldValue(row, 'FINGRESO'));
 }
 
 const FULL_NAME_FALLBACK_FIELDS = [

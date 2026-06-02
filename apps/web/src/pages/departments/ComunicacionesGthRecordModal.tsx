@@ -328,6 +328,12 @@ export function ComunicacionesGthRecordModal({ open, departmentId, recordId, onC
   const cargo = detail?.cargo || (payload ? getGthRowValue(payload, 'CARGO') : '');
   const area = detail?.area && detail.area !== '—' ? detail.area : payload ? getGthRowValue(payload, 'AREA') : '';
   const estado = detail?.estado ?? '';
+  const fechaIngreso =
+    detail?.fecha_ingreso && detail.fecha_ingreso !== '—'
+      ? detail.fecha_ingreso
+      : payload
+        ? getGthRowValue(payload, 'FINGRESO')
+        : '';
 
   return (
     <div
@@ -397,6 +403,10 @@ export function ComunicacionesGthRecordModal({ open, departmentId, recordId, onC
                 <div className="gth-presentation-modal__summary-row">
                   <dt>Estado</dt>
                   <dd>{estado || '—'}</dd>
+                </div>
+                <div className="gth-presentation-modal__summary-row">
+                  <dt>F. ingreso</dt>
+                  <dd>{fechaIngreso || '—'}</dd>
                 </div>
                 <div className="gth-presentation-modal__summary-row">
                   <dt>Foto registrada</dt>

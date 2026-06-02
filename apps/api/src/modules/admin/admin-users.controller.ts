@@ -34,8 +34,13 @@ export class AdminUsersController {
   ) {
     const skip = skipStr ? parseInt(skipStr, 10) : 0;
     const take = takeStr ? parseInt(takeStr, 10) : 50;
-    let global_role: 'admin' | 'auditor' | 'none' | undefined;
-    if (globalRole === 'admin' || globalRole === 'auditor' || globalRole === 'none') {
+    let global_role: 'admin' | 'auditor' | 'usuario_general' | 'none' | undefined;
+    if (
+      globalRole === 'admin' ||
+      globalRole === 'auditor' ||
+      globalRole === 'usuario_general' ||
+      globalRole === 'none'
+    ) {
       global_role = globalRole;
     }
     let is_active: boolean | undefined;

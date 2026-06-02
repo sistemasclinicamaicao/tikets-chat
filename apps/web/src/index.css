@@ -4056,20 +4056,17 @@ button.chat-person:focus-visible:not(:disabled) {
   opacity: 0.72;
 }
 
-.gth-record-row--clickable {
+.gth-record-photo-td--viewable {
   cursor: pointer;
 }
 
-.gth-record-row--clickable:hover td {
+.gth-record-photo-td--viewable:hover {
   background: color-mix(in srgb, var(--color-primary, #2563eb) 6%, transparent);
 }
 
-.gth-record-row--clickable:focus-visible {
-  outline: none;
-}
-
-.gth-record-row--clickable:focus-visible td:first-child {
-  box-shadow: inset 3px 0 0 var(--color-primary, #2563eb);
+.gth-record-photo-td--viewable:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
 }
 
 .employee-profile-modal.gth-presentation-modal {
@@ -4130,6 +4127,105 @@ button.chat-person:focus-visible:not(:disabled) {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.gth-photo-only-backdrop {
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.gth-photo-only-modal {
+  position: relative;
+  max-width: min(92vw, 520px);
+  max-height: min(92vh, 720px);
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+.gth-photo-only-modal__close {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  z-index: 2;
+  background: var(--ui-surface, #fff);
+  border-radius: 999px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.gth-photo-only-modal__frame {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0f172a;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+}
+
+.gth-photo-only-modal__img {
+  display: block;
+  width: 100%;
+  max-height: min(85vh, 680px);
+  height: auto;
+  object-fit: contain;
+}
+
+.gth-photo-only-modal__status {
+  margin: 2rem 1.5rem;
+  color: #e2e8f0;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.gth-photo-upload-success-backdrop {
+  z-index: 2100;
+}
+.gth-photo-upload-success {
+  max-width: 440px !important;
+  text-align: center;
+}
+.gth-photo-upload-success__header {
+  justify-content: center;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.gth-photo-upload-success__icon-wrap {
+  padding: 20px 18px 0;
+}
+.gth-photo-upload-success__icon {
+  font-size: 3rem;
+  color: #16a34a;
+  line-height: 1;
+}
+.gth-photo-upload-success__body {
+  padding: 0 18px 8px;
+  text-align: left;
+}
+.gth-photo-upload-success__lead {
+  padding-top: 0 !important;
+  text-align: center;
+}
+.gth-photo-upload-success__meta {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+.gth-photo-upload-success__meta dt {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ui-text-muted, #64748b);
+}
+.gth-photo-upload-success__meta dd {
+  margin: 2px 0 0;
+  font-weight: 500;
+  color: var(--ui-text);
+}
+
+.gth-photo-only-modal__status--error {
+  color: #fecaca;
+  max-width: 320px;
 }
 
 .gth-presentation-modal__summary {

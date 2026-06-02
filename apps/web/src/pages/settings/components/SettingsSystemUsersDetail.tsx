@@ -88,6 +88,7 @@ export function SettingsSystemUsersDetail({
             <option value="">(ninguno)</option>
             <option value="admin">admin</option>
             <option value="auditor">auditor</option>
+            <option value="usuario_general">usuario_general</option>
           </select>
         </label>
         <button

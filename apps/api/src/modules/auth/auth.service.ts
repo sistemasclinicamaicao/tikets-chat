@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -27,6 +27,8 @@ type UserForSession = {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly otpService: OtpService,
@@ -81,6 +83,17 @@ export class AuthService {
     return trimmed.slice(0, 128);
   }
 
+  /** Evita 500 en login si la consulta de foto GTH falla (p. ej. API desactualizado en :3030). */
+  private async safeHasPresentationAvatar(employeeId: string): Promise<boolean> {
+    try {
+      return await this.gthComunicacionesRecords.hasPhotoByEmployeeId(employeeId);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`GTH avatar check failed for ${employeeId}: ${reason}`);
+      return false;
+    }
+  }
+
   private async buildSessionPayload(
     user: UserForSession,
     meta: { otp_bypass?: boolean; device_name?: string },
@@ -106,9 +119,7 @@ export class AuthService {
       },
     });
 
-    const has_presentation_avatar = await this.gthComunicacionesRecords.hasPhotoByEmployeeId(
-      user.employeeId,
-    );
+    const has_presentation_avatar = await this.safeHasPresentationAvatar(user.employeeId);
 
     return {
       ...tokens,
@@ -212,7 +223,7 @@ export class AuthService {
     });
     if (!user) return false;
 
-    return this.gthComunicacionesRecords.hasPhotoByEmployeeId(trimmed);
+    return this.safeHasPresentationAvatar(trimmed);
   }
 
   /** Avatar de login desde carta de presentación GTH (Comunicaciones). Solo usuarios registrados. */
@@ -258,9 +269,7 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('USER_NOT_FOUND');
     }
-    const has_presentation_avatar = await this.gthComunicacionesRecords.hasPhotoByEmployeeId(
-      user.employeeId,
-    );
+    const has_presentation_avatar = await this.safeHasPresentationAvatar(user.employeeId);
     return {
       id: user.id,
       employee_id: user.employeeId,

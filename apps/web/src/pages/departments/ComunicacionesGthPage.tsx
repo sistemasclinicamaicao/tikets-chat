@@ -14,7 +14,8 @@ import {
   type TicketDepartmentOption,
 } from '../../lib/api';
 import { ClinicaDefaultPhotoImg } from '../../components/ClinicaDefaultPhotoImg';
-import { ComunicacionesGthRecordModal } from './ComunicacionesGthRecordModal';
+import { GthPhotoOnlyModal } from './GthPhotoOnlyModal';
+import { GthPhotoUploadSuccessModal } from './GthPhotoUploadSuccessModal';
 import { GTH_FILTER_FIELDS } from '../settingsUsersGthFields';
 import { DEPARTMENTS_BASE } from './departmentExperience';
 
@@ -39,6 +40,8 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState<GthComunicacionesRecordRow | null>(null);
+
   async function onFileChange(file: File | undefined) {
     if (!file || busy) return;
     setBusy(true);
@@ -46,6 +49,7 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
     try {
       const updated = await uploadGthComunicacionesPhoto(departmentId, row.id, file);
       onUploaded(updated);
+      setUploadSuccess(updated);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'No se pudo subir la fotografía');
     } finally {
@@ -61,7 +65,7 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
       {row.has_photo ? (
         <span
           className="gth-onboarding-thumb gth-onboarding-thumb--registered"
-          title="Fotografía registrada"
+          title="Ver fotografía"
           aria-hidden="true"
         >
           <i className="ti ti-user-check" />
@@ -92,6 +96,13 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
           aria-hidden="true"
         />
       </label>
+      <GthPhotoUploadSuccessModal
+        open={uploadSuccess !== null}
+        fullName={uploadSuccess?.full_name ?? row.full_name}
+        documentId={uploadSuccess?.document_id ?? row.document_id}
+        uploadedAt={uploadSuccess?.photo_uploaded_at ?? null}
+        onClose={() => setUploadSuccess(null)}
+      />
     </div>
   );
 }
@@ -115,7 +126,10 @@ export function ComunicacionesGthPage() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
   const [hasPhotoFilter, setHasPhotoFilter] = useState<'all' | 'true' | 'false'>('all');
-  const [presentationRecordId, setPresentationRecordId] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{
+    recordId: string;
+    alt: string;
+  } | null>(null);
 
   const department = useMemo(
     () => deptList.find((d) => d.id === departmentId) ?? null,
@@ -218,16 +232,18 @@ export function ComunicacionesGthPage() {
     setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   }
 
-  function openPresentation(record: GthComunicacionesRecordRow) {
+  function openPhotoPreview(record: GthComunicacionesRecordRow) {
     if (!record.has_photo) return;
-    setPresentationRecordId(record.id);
+    setPhotoPreview({ recordId: record.id, alt: `Fotografía de ${record.full_name}` });
   }
 
   function rowClassName(row: GthComunicacionesRecordRow): string | undefined {
-    const classes: string[] = [];
-    if (!row.is_active) classes.push('gth-record-row--inactive');
-    if (row.has_photo) classes.push('gth-record-row--clickable');
-    return classes.length > 0 ? classes.join(' ') : undefined;
+    if (!row.is_active) return 'gth-record-row--inactive';
+    return undefined;
+  }
+
+  function photoCellClassName(row: GthComunicacionesRecordRow): string {
+    return row.has_photo ? 'gth-record-photo-td gth-record-photo-td--viewable' : 'gth-record-photo-td';
   }
 
   if (!departmentId) {
@@ -352,6 +368,7 @@ export function ComunicacionesGthPage() {
               <th>Cargo</th>
               <th>Estado</th>
               <th>Área</th>
+              <th>F. ingreso</th>
               <th>Fotografía</th>
               <th>Fecha foto</th>
             </tr>
@@ -359,11 +376,11 @@ export function ComunicacionesGthPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7}>Cargando…</td>
+                <td colSpan={8}>Cargando…</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   {includeInactive
                     ? 'No hay registros con los filtros aplicados.'
                     : 'No hay empleados activos. Sincronice el directorio GTH o active «Ver inactivos».'}
@@ -371,38 +388,36 @@ export function ComunicacionesGthPage() {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className={rowClassName(row)}
-                  onClick={() => openPresentation(row)}
-                  onKeyDown={(e) => {
-                    if (!row.has_photo) return;
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      openPresentation(row);
-                    }
-                  }}
-                  tabIndex={row.has_photo ? 0 : undefined}
-                  role={row.has_photo ? 'button' : undefined}
-                  aria-label={
-                    row.has_photo
-                      ? `Ver carta de presentación de ${row.full_name}`
-                      : undefined
-                  }
-                >
+                <tr key={row.id} className={rowClassName(row)}>
                   <td>{row.full_name}</td>
                   <td>{row.document_id ?? '—'}</td>
                   <td>{row.cargo || '—'}</td>
                   <td>{row.estado}</td>
                   <td>{row.area || '—'}</td>
-                  <td className="gth-record-photo-td">
+                  <td>{row.fecha_ingreso || '—'}</td>
+                  <td
+                    className={photoCellClassName(row)}
+                    onClick={() => openPhotoPreview(row)}
+                    onKeyDown={(e) => {
+                      if (!row.has_photo) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openPhotoPreview(row);
+                      }
+                    }}
+                    tabIndex={row.has_photo ? 0 : undefined}
+                    role={row.has_photo ? 'button' : undefined}
+                    aria-label={
+                      row.has_photo ? `Ver fotografía de ${row.full_name}` : undefined
+                    }
+                  >
                     <RowPhotoUpload
                       departmentId={departmentId}
                       row={row}
                       onUploaded={onRowUploaded}
                     />
                   </td>
-                  <td>{formatDate(row.photo_uploaded_at)}</td>
+                  <td>{row.has_photo ? formatDate(row.photo_uploaded_at) : '—'}</td>
                 </tr>
               ))
             )}
@@ -434,11 +449,16 @@ export function ComunicacionesGthPage() {
         </div>
       ) : null}
 
-      <ComunicacionesGthRecordModal
-        open={presentationRecordId !== null}
+      <GthPhotoOnlyModal
+        open={photoPreview !== null}
         departmentId={departmentId}
-        recordId={presentationRecordId}
-        onClose={() => setPresentationRecordId(null)}
+        recordId={photoPreview?.recordId ?? null}
+        alt={photoPreview?.alt ?? 'Fotografía GTH'}
+        onClose={() => setPhotoPreview(null)}
+        onUnavailable={() => {
+          setPhotoPreview(null);
+          void loadRows();
+        }}
       />
     </section>
   );

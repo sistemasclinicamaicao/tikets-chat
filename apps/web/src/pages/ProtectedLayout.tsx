@@ -12,6 +12,7 @@ import {
   clearSession,
   getCurrentUserProfile,
   isGlobalAdminRole,
+  isRestrictedToChatAndDepartments,
   isStoredGlobalAdmin,
   formatSessionRoleLabel,
   persistUserRolesFromProfile,
@@ -62,6 +63,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const [userRoleLabel, setUserRoleLabel] = useState(formatSessionRoleLabel);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(() => isStoredGlobalAdmin());
   const [showInventoryNav, setShowInventoryNav] = useState(() => canAccessInventoryUi());
+  const [chatOnlyNav, setChatOnlyNav] = useState(() => isRestrictedToChatAndDepartments());
   const [employeeModalOpen, setEmployeeModalOpen] = useState(false);
   const [employeeProfile, setEmployeeProfile] = useState<CurrentUserProfile | null>(null);
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
@@ -182,6 +184,8 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
       const profile = await getCurrentUserProfile();
       persistUserRolesFromProfile(profile);
       setIsGlobalAdmin(isGlobalAdminRole(profile.global_role));
+      setChatOnlyNav(isRestrictedToChatAndDepartments(profile.global_role));
+      setShowInventoryNav(canAccessInventoryUi());
       setHasPresentationAvatar(profile.has_presentation_avatar ?? false);
       setEmployeeProfile(profile);
       authSet('user_employee_id', profile.employee_id);
@@ -336,22 +340,26 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
             </div>
           ) : null}
           <nav className="section-nav section-nav--vertical">
-            <Link
-              className={location.pathname === '/' ? 'active' : ''}
-              to="/"
-              onClick={() => closeMobileNav()}
-            >
-              <i className="ti ti-home" aria-hidden="true" />
-              <span>Inicio</span>
-            </Link>
-            <Link
-              className={location.pathname.startsWith('/tickets') ? 'active' : ''}
-              to="/tickets"
-              onClick={() => closeMobileNav()}
-            >
-              <i className="ti ti-ticket" aria-hidden="true" />
-              <span>Tickets</span>
-            </Link>
+            {!chatOnlyNav ? (
+              <Link
+                className={location.pathname === '/' ? 'active' : ''}
+                to="/"
+                onClick={() => closeMobileNav()}
+              >
+                <i className="ti ti-home" aria-hidden="true" />
+                <span>Inicio</span>
+              </Link>
+            ) : null}
+            {!chatOnlyNav ? (
+              <Link
+                className={location.pathname.startsWith('/tickets') ? 'active' : ''}
+                to="/tickets"
+                onClick={() => closeMobileNav()}
+              >
+                <i className="ti ti-ticket" aria-hidden="true" />
+                <span>Tickets</span>
+              </Link>
+            ) : null}
             <Link
               className={location.pathname.startsWith('/chat') ? 'active' : ''}
               to="/chat"
@@ -360,26 +368,28 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
               <i className="ti ti-message-circle" aria-hidden="true" />
               <span>Chat</span>
             </Link>
-            <Link
-              className={location.pathname.startsWith('/settings') ? 'active' : ''}
-              to="/settings"
-              aria-expanded={isGlobalAdmin && location.pathname.startsWith('/settings') ? settingsSubnavOpen : undefined}
-              onClick={(e) => {
-                if (!isGlobalAdmin) {
-                  closeMobileNav();
-                  return;
-                }
-                if (location.pathname.startsWith('/settings')) {
-                  e.preventDefault();
-                  setSettingsSubnavOpen((open) => !open);
-                } else {
-                  closeMobileNav();
-                }
-              }}
-            >
-              <i className="ti ti-settings" aria-hidden="true" />
-              <span>Configuración</span>
-            </Link>
+            {!chatOnlyNav ? (
+              <Link
+                className={location.pathname.startsWith('/settings') ? 'active' : ''}
+                to="/settings"
+                aria-expanded={isGlobalAdmin && location.pathname.startsWith('/settings') ? settingsSubnavOpen : undefined}
+                onClick={(e) => {
+                  if (!isGlobalAdmin) {
+                    closeMobileNav();
+                    return;
+                  }
+                  if (location.pathname.startsWith('/settings')) {
+                    e.preventDefault();
+                    setSettingsSubnavOpen((open) => !open);
+                  } else {
+                    closeMobileNav();
+                  }
+                }}
+              >
+                <i className="ti ti-settings" aria-hidden="true" />
+                <span>Configuración</span>
+              </Link>
+            ) : null}
             {showSettingsSubnav ? (
               <div className="workspace-settings-subnav" aria-label="Secciones de configuración">
                 {SETTINGS_TAB_GROUPS.map((group) => (
