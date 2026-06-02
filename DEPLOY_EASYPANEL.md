@@ -79,7 +79,20 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
    - `GET /api/v1/admin/runtime-config` debe reflejar el `storage_endpoint`, `storage_hostname`, `storage_protocol` y `storage_tls_relaxed` esperados;
    - `GET /api/v1/admin/runtime-config/storage/probe` debe confirmar `tcp.ok=true` y, si usas HTTPS con certificado no confiable, te mostrará si el fallo está en `tls` o en `bucket_head`.
 
-## 5) Notas de operación
+## 5) Webhooks de despliegue manual (Git push → panel)
+
+Tras subir cambios a `main`, puedes forzar rebuild desde el panel EasyPanel (`179.60.240.86:3000`):
+
+| Servicio | Webhook |
+|----------|---------|
+| **API** | `http://179.60.240.86:3000/api/deploy/6a8a2e3a225f8d1d303de2927aefef9098db702d9fdc3784` |
+| **Web** | `http://179.60.240.86:3000/api/deploy/9c7ae5852eab81da5927263b2748f55eb6f1eb4d6b304809` |
+
+Respuesta esperada: texto `Deploying...` y HTTP `200`. Espera 1–2 minutos y valida `GET /api/v1/health`.
+
+> Los tokens en la URL son secretos de despliegue: no los publiques en repos públicos ni en tickets abiertos.
+
+## 6) Notas de operación
 
 - El contenedor `web` publica el frontend en `${WEB_PORT}`.
 - El contenedor `api` no expone puerto público en este compose; se consume vía red interna desde `web`.
@@ -90,7 +103,7 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 - **Chat en el front:** toasts y sonido al recibir mensajes; tono WAV opcional en `apps/web/public/sounds/chat-incoming.wav` (si no existe, suena un tono sintético). El cliente re-emite `chat:sync-rooms` al detectar canal nuevo y cada 45 s para mantener las salas Socket.IO alineadas con la membresía.
 - **Push FCM (APK / servidor):** define `FCM_SERVICE_ACCOUNT_JSON` en el servicio API con el JSON de la cuenta de servicio de Firebase (una sola línea o variable multilínea según el panel). Sin esta variable, el API omite el envío multicast. Los dispositivos Android registran el token vía `POST /api/v1/auth/push-token` (JWT). Coloca `google-services.json` en `apps/web/android/app/` antes de `cap sync` para que Gradle aplique el plugin de Google Services (el repo tolera su ausencia, pero entonces FCM no llegará al nativo).
 
-## 9) APK Android: segundo plano, recientes y batería
+## 10) APK Android: segundo plano, recientes y batería
 
 - **Cerrar desde «recientes»:** Android puede matar el proceso de la WebView; no hay API oficial para impedirlo sin UX intrusiva (p. ej. servicio en primer plano con notificación persistente).
 - **Optimización de batería:** en muchos equipos conviene excluir la app de restricciones agresivas si se esperan avisos fiables cuando la app está en segundo plano (sigue sin ser garantía).
@@ -98,7 +111,7 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 - **Web en el navegador:** las notificaciones de escritorio dependen del permiso del sitio y de que el runtime siga vivo; no sustituyen a FCM en la APK.
 - Esta versión incluye una migración que elimina el índice único legado `chat_channels_department_id_key`; es necesaria para que varios tickets de un mismo departamento puedan crear su canal sin chocar por `department_id`.
 
-## 6) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway
+## 7) EasyPanel: servicio solo API (Dockerfile) — 502 Bad Gateway
 
 Si el dominio en **Dominios** apunta a `http://<servicio>:80` pero la imagen del API Nest escucha en **`PORT` 3030** (por defecto), el proxy no encuentra proceso en el puerto 80 y responde **502**.
 
@@ -110,7 +123,7 @@ Comprueba con `GET https://<tu-dominio>/api/v1/health` (debe devolver 200) y `GE
 
 Si en logs aparece `migrate found failed migrations` y el contenedor reinicia en bucle, la tabla `_prisma_migrations` tiene una migración marcada como fallida. Hay que resolverla según [documentación Prisma](https://www.prisma.io/docs/guides/migrate/production-troubleshooting) (`prisma migrate resolve`) o corregir la BD y volver a desplegar. Mientras `migrate deploy` falle, **no se ejecutará** `node dist/main` (el entrypoint sale antes).
 
-## 7) Copiar la BD desde tu PC (desarrollo) a Postgres en EasyPanel
+## 9) Copiar la BD desde tu PC (desarrollo) a Postgres en EasyPanel
 
 La URL que muestra el panel (`postgres://...@panel...:5434/...`) suele ser **solo alcanzable desde la red del servidor** o con reglas de firewall. Desde tu PC a menudo verás **connection refused** aunque la URL sea correcta: no es un error de `pg_restore`, es que **el puerto no está abierto a Internet** (recomendable por seguridad).
 

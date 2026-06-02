@@ -14,6 +14,13 @@ Guía central para localizar toda la documentación del repositorio `tikets-chat
 
 ---
 
+## Cambios recientes (Junio 2026)
+
+| Documento | Contenido |
+|-----------|-----------|
+| [CHANGELOG_JUNIO_2026.md](CHANGELOG_JUNIO_2026.md) | GTH Comunicaciones, fotos en BD, `usuario_general`, despliegue |
+| [GTH_ALTAS_COMUNICACIONES.md](GTH_ALTAS_COMUNICACIONES.md) | Guía operativa Altas GTH y fotografías |
+
 ## Cambios recientes (Mayo 2026)
 
 | Documento | Contenido |
@@ -74,10 +81,9 @@ Guía central para localizar toda la documentación del repositorio `tikets-chat
 
 ## Commit de referencia (rama `main`)
 
-Documentación de esta fase alineada con el commit:
-
-```text
-cebab33 — feat(web): Aura chat UI, corporate palette, and desktop shell
-```
+| Fase | Commit | Descripción |
+|------|--------|-------------|
+| Junio 2026 | `c3dd871` | GTH Altas, fotos BD, `usuario_general` |
+| Mayo 2026 | `cebab33` | UI Aura, paleta, desktop shell |
 
 Repositorio: `https://github.com/sistemasclinicamaicao/tikets-chat.git`

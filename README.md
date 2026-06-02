@@ -19,6 +19,8 @@ Monorepo: API NestJS (Prisma + PostgreSQL) y aplicación web React (Vite).
 |------|--------|
 | Índice completo | [docs/INDICE_DOCUMENTACION.md](docs/INDICE_DOCUMENTACION.md) |
 | Proyecto (arquitectura) | [DOCUMENTACION_PROYECTO.md](DOCUMENTACION_PROYECTO.md) |
+| Altas GTH Comunicaciones | [docs/GTH_ALTAS_COMUNICACIONES.md](docs/GTH_ALTAS_COMUNICACIONES.md) |
+| Cambios Junio 2026 (GTH, fotos, roles) | [docs/CHANGELOG_JUNIO_2026.md](docs/CHANGELOG_JUNIO_2026.md) |
 | Cambios UI Mayo 2026 | [docs/CHANGELOG_MAYO_2026.md](docs/CHANGELOG_MAYO_2026.md) |
 | Paleta y UI chat | [docs/PALETA_COLORES_AURA.md](docs/PALETA_COLORES_AURA.md), [docs/UI_CHAT_Y_LAYOUT.md](docs/UI_CHAT_Y_LAYOUT.md) |
 | Equipo al login | [docs/SESION_Y_EQUIPO_CLIENTE.md](docs/SESION_Y_EQUIPO_CLIENTE.md) |
