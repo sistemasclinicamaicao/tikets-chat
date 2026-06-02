@@ -168,9 +168,9 @@ export class AdminGthComunicacionesRecordsService {
     }
 
     if (query.hasPhoto === 'true') {
-      where.photoAttachmentId = { not: null };
+      where.OR = [{ photoData: { not: null } }, { photoAttachmentId: { not: null } }];
     } else if (query.hasPhoto === 'false') {
-      where.photoAttachmentId = null;
+      where.AND = [{ photoData: null }, { photoAttachmentId: null }];
     }
 
     const q = query.q?.trim().toLowerCase() ?? '';

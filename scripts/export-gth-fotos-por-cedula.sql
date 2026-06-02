@@ -1,5 +1,6 @@
--- Exporta cédula + fotografía GTH en BD (BYTEA) para apps externas.
--- Solo registros con foto en PostgreSQL (sin depender de MinIO).
+-- Exporta CSV: cédula + metadatos de foto GTH en PostgreSQL (sin incluir el binario).
+-- Desde psql en el servidor o con cliente que soporte \copy.
+-- Para listar en pgAdmin use: scripts/consultar-gth-fotos-por-cedula.sql
 
 \copy (
   SELECT

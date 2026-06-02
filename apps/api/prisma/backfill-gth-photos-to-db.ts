@@ -53,9 +53,62 @@ async function getObjectBuffer(
   return Buffer.concat(chunks);
 }
 
+async function purgeLegacyAttachment(
+  s3: S3Client,
+  bucket: string,
+  row: {
+    id: string;
+    documentId: string | null;
+    photoAttachmentId: string;
+    photoAttachment: { id: string; storageKey: string } | null;
+  },
+): Promise<void> {
+  const att = row.photoAttachment;
+  if (!att) {
+    await prisma.gthComunicacionesRecord.update({
+      where: { id: row.id },
+      data: { photoAttachmentId: null },
+    });
+    return;
+  }
+  await prisma.gthComunicacionesRecord.update({
+    where: { id: row.id },
+    data: { photoAttachmentId: null },
+  });
+  await prisma.attachment.delete({ where: { id: att.id } }).catch(() => undefined);
+  await s3
+    .send(new DeleteObjectCommand({ Bucket: bucket, Key: att.storageKey }))
+    .catch(() => undefined);
+  console.log(`  purge legacy ${row.documentId ?? row.id} (${att.storageKey})`);
+}
+
 async function main() {
   const bucket = process.env.MINIO_BUCKET ?? 'helpdesk';
   const s3 = createS3Client();
+
+  const legacyOnly = await prisma.gthComunicacionesRecord.findMany({
+    where: {
+      photoAttachmentId: { not: null },
+      photoData: { not: null },
+    },
+    include: { photoAttachment: true },
+  });
+
+  console.log(`Registros con foto en BD y referencia MinIO legacy: ${legacyOnly.length}`);
+  for (const row of legacyOnly) {
+    if (!row.photoAttachmentId) continue;
+    try {
+      await purgeLegacyAttachment(s3, bucket, {
+        id: row.id,
+        documentId: row.documentId,
+        photoAttachmentId: row.photoAttachmentId,
+        photoAttachment: row.photoAttachment,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`  purge fail ${row.id}: ${msg}`);
+    }
+  }
 
   const rows = await prisma.gthComunicacionesRecord.findMany({
     where: {
@@ -65,7 +118,7 @@ async function main() {
     include: { photoAttachment: true },
   });
 
-  console.log(`Registros a migrar: ${rows.length}`);
+  console.log(`Registros a migrar desde MinIO: ${rows.length}`);
 
   let ok = 0;
   let failed = 0;
