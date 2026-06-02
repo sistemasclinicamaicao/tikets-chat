@@ -6,7 +6,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { randomUUID } from 'crypto';
 import type { UserPayload } from '../../common/auth/jwt-user.payload';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -281,6 +280,14 @@ export class AdminGthComunicacionesRecordsService {
     };
   }
 
+  private recordHasPhoto(row: {
+    photoData: Uint8Array | Buffer | null;
+    photoAttachmentId: string | null;
+  }): boolean {
+    const hasDbPhoto = row.photoData != null && row.photoData.length > 0;
+    return hasDbPhoto || Boolean(row.photoAttachmentId);
+  }
+
   private toRecordRow(row: {
     id: string;
     externalRowKey: string;
@@ -290,10 +297,11 @@ export class AdminGthComunicacionesRecordsService {
     payload: unknown;
     isActive: boolean;
     photoAttachmentId: string | null;
+    photoData: Uint8Array | Buffer | null;
     photoUploadedAt: Date | null;
     lastSyncedAt: Date;
     createdAt: Date;
-    photoAttachment: { id: string; mimeType: string } | null;
+    photoAttachment?: { id: string; mimeType: string } | null;
   }): GthComunicacionesRecordRow {
     const payload = (row.payload ?? {}) as Record<string, unknown>;
     const fullName = buildGthEmployeeFullName(payload);
@@ -308,11 +316,41 @@ export class AdminGthComunicacionesRecordsService {
       area: resolveGthFieldValue(payload, 'AREA') || '—',
       tipo_contrato: resolveGthFieldValue(payload, 'TIPOCONTRATO') || '—',
       is_active: row.isActive,
-      has_photo: Boolean(row.photoAttachmentId),
+      has_photo: this.recordHasPhoto(row),
       photo_attachment_id: row.photoAttachmentId,
       photo_uploaded_at: row.photoUploadedAt?.toISOString() ?? null,
       last_synced_at: row.lastSyncedAt.toISOString(),
       created_at: row.createdAt.toISOString(),
+    };
+  }
+
+  private async purgeLegacyPhotoAttachment(
+    attachmentId: string | null,
+    storageKey: string | null,
+  ): Promise<void> {
+    if (!attachmentId) return;
+    await this.prisma.attachment.delete({ where: { id: attachmentId } }).catch(() => undefined);
+    if (storageKey) {
+      try {
+        await this.storage.deleteObject(storageKey);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Could not delete legacy GTH photo blob ${storageKey}: ${reason}`);
+      }
+    }
+  }
+
+  private photoFromDb(row: {
+    photoData: Uint8Array | Buffer | null;
+    photoMimeType: string | null;
+    photoFileName: string | null;
+  }): { buffer: Buffer; mimeType: string; originalName: string } | null {
+    if (row.photoData == null || row.photoData.length === 0) return null;
+    const buffer = Buffer.isBuffer(row.photoData) ? row.photoData : Buffer.from(row.photoData);
+    return {
+      buffer,
+      mimeType: row.photoMimeType?.trim() || 'image/jpeg',
+      originalName: row.photoFileName?.trim() || 'foto-gth.jpg',
     };
   }
 
@@ -331,57 +369,26 @@ export class AdminGthComunicacionesRecordsService {
     });
     if (!record) throw new NotFoundException('Registro GTH no encontrado');
 
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
-    const storageKey = `gth/comunicaciones/${recordId}/${Date.now()}-${randomUUID()}-${safeName}`;
-
-    try {
-      await this.storage.putObject(storageKey, file.buffer, file.mimetype);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.logger.error(`GTH record photo upload failed for ${recordId}: ${reason}`);
-      throw new ServiceUnavailableException('No se pudo subir la fotografía al almacenamiento.');
-    }
-
     const previousAttachmentId = record.photoAttachmentId;
     const previousStorageKey = record.photoAttachment?.storageKey ?? null;
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const attachment = await tx.attachment.create({
-        data: {
-          storageKey,
-          originalName: file.originalname.slice(0, 255),
-          mimeType: file.mimetype.slice(0, 127),
-          sizeBytes: file.size,
-        },
-      });
-
-      const row = await tx.gthComunicacionesRecord.update({
-        where: { id: recordId },
-        data: {
-          photoAttachmentId: attachment.id,
-          photoUploadedAt: new Date(),
-          photoUploadedByUserId: user.sub,
-        },
-        include: {
-          photoAttachment: { select: { id: true, mimeType: true } },
-        },
-      });
-
-      if (previousAttachmentId && previousAttachmentId !== attachment.id) {
-        await tx.attachment.delete({ where: { id: previousAttachmentId } }).catch(() => undefined);
-      }
-
-      return row;
+    const updated = await this.prisma.gthComunicacionesRecord.update({
+      where: { id: recordId },
+      data: {
+        photoData: Uint8Array.from(file.buffer),
+        photoMimeType: file.mimetype.slice(0, 127),
+        photoFileName: file.originalname.slice(0, 255),
+        photoSizeBytes: file.size,
+        photoAttachmentId: null,
+        photoUploadedAt: new Date(),
+        photoUploadedByUserId: user.sub,
+      },
+      include: {
+        photoAttachment: { select: { id: true, mimeType: true } },
+      },
     });
 
-    if (previousStorageKey && previousStorageKey !== storageKey) {
-      try {
-        await this.storage.deleteObject(previousStorageKey);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Could not delete old GTH photo blob ${previousStorageKey}: ${reason}`);
-      }
-    }
+    await this.purgeLegacyPhotoAttachment(previousAttachmentId, previousStorageKey);
 
     return this.toRecordRow(updated);
   }
@@ -414,16 +421,22 @@ export class AdminGthComunicacionesRecordsService {
 
     const record = await this.prisma.gthComunicacionesRecord.findFirst({
       where: {
-        photoAttachmentId: { not: null },
-        OR: candidates.flatMap((candidate) => [
-          { documentId: candidate },
-          { documentId: { equals: candidate, mode: 'insensitive' } },
-        ]),
+        AND: [
+          {
+            OR: [{ photoData: { not: null } }, { photoAttachmentId: { not: null } }],
+          },
+          {
+            OR: candidates.flatMap((candidate) => [
+              { documentId: candidate },
+              { documentId: { equals: candidate, mode: 'insensitive' } },
+            ]),
+          },
+        ],
       },
-      select: { id: true },
+      select: { id: true, photoData: true, photoAttachmentId: true },
     });
 
-    return Boolean(record);
+    return record ? this.recordHasPhoto(record) : false;
   }
 
   /** Fotografía de carta de presentación por cédula/employee_id (login y perfil). */
@@ -442,24 +455,41 @@ export class AdminGthComunicacionesRecordsService {
 
     const record = await this.prisma.gthComunicacionesRecord.findFirst({
       where: {
-        photoAttachmentId: { not: null },
-        OR: candidates.flatMap((candidate) => [
-          { documentId: candidate },
-          { documentId: { equals: candidate, mode: 'insensitive' } },
-        ]),
+        AND: [
+          {
+            OR: [{ photoData: { not: null } }, { photoAttachmentId: { not: null } }],
+          },
+          {
+            OR: candidates.flatMap((candidate) => [
+              { documentId: candidate },
+              { documentId: { equals: candidate, mode: 'insensitive' } },
+            ]),
+          },
+        ],
       },
       include: { photoAttachment: true },
       orderBy: [{ photoUploadedAt: 'desc' }, { updatedAt: 'desc' }],
     });
 
-    if (!record?.photoAttachment) return null;
+    if (!record || !this.recordHasPhoto(record)) return null;
 
-    const buffer = await this.storage.getObjectBuffer(record.photoAttachment.storageKey);
-    return {
-      buffer,
-      mimeType: record.photoAttachment.mimeType,
-      originalName: record.photoAttachment.originalName,
-    };
+    const fromDb = this.photoFromDb(record);
+    if (fromDb) return fromDb;
+
+    if (!record.photoAttachment) return null;
+
+    try {
+      const buffer = await this.storage.getObjectBuffer(record.photoAttachment.storageKey);
+      return {
+        buffer,
+        mimeType: record.photoAttachment.mimeType,
+        originalName: record.photoAttachment.originalName,
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Legacy GTH photo read failed for ${record.id}: ${reason}`);
+      return null;
+    }
   }
 
   async getPhotoContent(recordId: string): Promise<{
@@ -471,15 +501,28 @@ export class AdminGthComunicacionesRecordsService {
       where: { id: recordId },
       include: { photoAttachment: true },
     });
-    if (!record?.photoAttachment) {
+    if (!record || !this.recordHasPhoto(record)) {
       throw new NotFoundException('Fotografía no encontrada');
     }
 
-    const buffer = await this.storage.getObjectBuffer(record.photoAttachment.storageKey);
-    return {
-      buffer,
-      mimeType: record.photoAttachment.mimeType,
-      originalName: record.photoAttachment.originalName,
-    };
+    const fromDb = this.photoFromDb(record);
+    if (fromDb) return fromDb;
+
+    if (!record.photoAttachment) {
+      throw new NotFoundException('Fotografía no encontrada');
+    }
+
+    try {
+      const buffer = await this.storage.getObjectBuffer(record.photoAttachment.storageKey);
+      return {
+        buffer,
+        mimeType: record.photoAttachment.mimeType,
+        originalName: record.photoAttachment.originalName,
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.error(`GTH record photo read failed for ${recordId}: ${reason}`);
+      throw new ServiceUnavailableException('No se pudo leer la fotografía.');
+    }
   }
 }
