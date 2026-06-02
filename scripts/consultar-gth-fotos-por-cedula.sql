@@ -1,5 +1,4 @@
--- Lista cédulas con fotografía en PostgreSQL (metadatos; no muestra el binario en la grilla).
--- Ejecutar en pgAdmin / DBeaver. Para UNA cédula con el archivo, ver al final.
+-- Catálogo de avatares (solo metadatos). Integración con foto: scripts/integracion-gth-avatars.sql
 
 SELECT
   TRIM(r.document_id) AS cedula,

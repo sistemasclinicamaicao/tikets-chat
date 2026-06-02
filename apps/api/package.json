@@ -28,6 +28,7 @@
     "import:employees": "ts-node -r tsconfig-paths/register prisma/import-employees-list.ts",
     "import:legacy-hv-pc": "ts-node -r tsconfig-paths/register prisma/import-legacy-hv-pc.ts",
     "backfill:gth-photos-to-db": "ts-node -r tsconfig-paths/register prisma/backfill-gth-photos-to-db.ts",
+    "export:gth-fotos-html": "ts-node -r tsconfig-paths/register prisma/export-gth-photos-html.ts",
     "seed:inventory": "ts-node -r tsconfig-paths/register prisma/seed-inventory-sistemas.ts"
   },
   "dependencies": {
