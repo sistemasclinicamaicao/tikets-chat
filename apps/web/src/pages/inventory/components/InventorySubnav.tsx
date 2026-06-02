@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
+import { DEPARTMENTS_BASE } from '../../departments/departmentExperience';
 import { inventoryPcBdHojaDeVidaPath } from '../inventoryHelpers';
 
 type Props = { departmentId: string };
 
 export function InventorySubnav({ departmentId }: Props) {
-  const base = `/inventario/${departmentId}`;
+  const base = `${DEPARTMENTS_BASE}/${departmentId}`;
   const tabClass = ({ isActive }: { isActive: boolean }) =>
     `inventory-tab${isActive ? ' inventory-tab--active' : ''}`;
 
@@ -29,7 +30,7 @@ export function InventorySubnav({ departmentId }: Props) {
         <NavLink to={`${base}/dar-bajas`} className={tabClass}>
           Dar bajas
         </NavLink>
-        <NavLink to="/inventario" className={tabClass}>
+        <NavLink to={DEPARTMENTS_BASE} className={tabClass}>
           Departamentos
         </NavLink>
       </div>

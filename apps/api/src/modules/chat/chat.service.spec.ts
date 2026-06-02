@@ -34,6 +34,8 @@ describe('ChatService', () => {
       chatMessage: { findMany: jest.fn() },
     } as any;
     const service = new ChatService(prisma, storageMock);
-    await expect(service.getMessages('user-1', 'channel-1')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.getMessages('user-1', 'channel-1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });

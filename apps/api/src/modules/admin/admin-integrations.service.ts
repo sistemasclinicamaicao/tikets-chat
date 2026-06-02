@@ -13,6 +13,8 @@ import {
 import { assertAllowedIntegrationBaseUrl } from '../../common/integrations/integration-url.guard';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { discoverGthAvailableFields } from './admin-gth-fields.util';
+import { extractGthRows, GTH_INTEGRATION_NAME } from './admin-gth-integration.util';
 import { CreateIntegrationDto } from './dto/create-integration.dto';
 import { UpdateIntegrationDto } from './dto/update-integration.dto';
 
@@ -515,6 +517,79 @@ export class AdminIntegrationsService {
    * Ejecuta el GET configurado para la primera integración **activa** con el nombre indicado
    * (p. ej. inventario PC). No actualiza `lastProbeFields` en BD.
    */
+  /** Directorio GTH (CONEXION-GTH) normalizado para la subpestaña Usuarios → GTH. */
+  async fetchGthDirectory(actorUserId: string) {
+    const raw = (await this.fetchByIntegrationName(GTH_INTEGRATION_NAME, actorUserId)) as Record<
+      string,
+      unknown
+    >;
+
+    const integration = raw.integration as { id: string; name: string };
+    const http = {
+      ok: raw.ok === true,
+      status: Number(raw.status ?? 0),
+      status_text: String(raw.status_text ?? ''),
+    };
+
+    if (raw.body_truncated === true) {
+      return {
+        integration,
+        http,
+        rows: [] as Record<string, unknown>[],
+        total: 0,
+        body_truncated: true,
+        error:
+          'La respuesta del API externo supera el límite del servidor. Ajuste INTEGRATIONS_PROBE_BODY_MAX_MB o reduzca el payload en el origen.',
+        available_fields: Array.isArray(raw.available_fields) ? (raw.available_fields as string[]) : [],
+      };
+    }
+
+    if (typeof raw.error === 'string' && raw.error) {
+      return {
+        integration,
+        http,
+        rows: [] as Record<string, unknown>[],
+        total: 0,
+        error: raw.error,
+        available_fields: Array.isArray(raw.available_fields) ? (raw.available_fields as string[]) : [],
+      };
+    }
+
+    if (!http.ok) {
+      return {
+        integration,
+        http,
+        rows: [] as Record<string, unknown>[],
+        total: 0,
+        error: `El API respondió ${http.status} ${http.status_text}`.trim(),
+      };
+    }
+
+    if (typeof raw.non_json_preview === 'string') {
+      return {
+        integration,
+        http,
+        rows: [] as Record<string, unknown>[],
+        total: 0,
+        non_json_preview: raw.non_json_preview,
+        error: 'La respuesta no es JSON.',
+      };
+    }
+
+    /** Vista GTH: datos completos del JSON (sin máscara); la máscara solo aplica al sondeo en Configuración. */
+    const source = raw.data !== undefined && raw.data !== null ? raw.data : raw.filtered;
+    const rows = extractGthRows(source);
+    const available_fields = discoverGthAvailableFields(rows);
+
+    return {
+      integration,
+      http,
+      rows,
+      total: rows.length,
+      available_fields,
+    };
+  }
+
   async fetchByIntegrationName(integrationName: string, actorUserId: string) {
     if (!isIntegrationsEncryptionConfigured()) {
       throw new ServiceUnavailableException('INTEGRATIONS_ENCRYPTION_KEY no está configurada.');

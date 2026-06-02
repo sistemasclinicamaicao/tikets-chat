@@ -2,12 +2,24 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
+  forwardRef,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import type { UserPayload } from '../../common/auth/jwt-user.payload';
+import {
+  DEPARTMENT_ROLES,
+  isSupervisorLikeRole,
+  resolveDepartmentActorRole,
+} from '../../common/auth/department-access.util';
+import { pickGthDocumentType } from '../admin/admin-gth-row.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ChatGateway } from '../chat/chat.gateway';
 import { ChatService } from '../chat/chat.service';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -36,6 +48,8 @@ export type PaginatedResult<T> = {
 
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ticketEvents: TicketEventsService,
@@ -45,9 +59,79 @@ export class TicketsService {
     private readonly notifications: NotificationsService,
     private readonly lifecycle: LifecycleService,
     private readonly storage: StorageService,
+    @Inject(forwardRef(() => ChatService))
     private readonly chat: ChatService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
     private readonly realtime: TicketsRealtimeService,
   ) {}
+
+  /** Publica en el canal del ticket el mensaje GTH si aún no hay mensajes (idempotente). */
+  async ensureGthTicketChatBootstrap(ticketId: string, actorUserId: string, body: string): Promise<boolean> {
+    const trimmed = body.trim();
+    if (!trimmed) return false;
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { requesterId: true },
+    });
+    const senderId = ticket?.requesterId ?? actorUserId;
+
+    const channel = await this.prisma.chatChannel.findUnique({
+      where: { ticketId },
+      select: { id: true },
+    });
+    if (!channel) return false;
+
+    const existingCount = await this.prisma.chatMessage.count({
+      where: { channelId: channel.id },
+    });
+    if (existingCount > 0) return false;
+
+    try {
+      await this.chat.addUsersToTicketChannel(ticketId, [senderId]);
+      const message = await this.chat.sendMessage(channel.id, senderId, trimmed);
+      this.chatGateway.broadcastChannelMessage(channel.id, message);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Bootstrap chat GTH falló para ticket ${ticketId}: ${msg}`);
+      return false;
+    }
+  }
+
+  /** Actualiza descripción del ticket y el mensaje bootstrap GTH en chat (plantilla). */
+  async syncGthTicketChatTemplate(ticketId: string, body: string): Promise<boolean> {
+    const trimmed = body.trim();
+    if (!trimmed) return false;
+
+    await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: { description: trimmed },
+    });
+
+    const channel = await this.prisma.chatChannel.findUnique({
+      where: { ticketId },
+      select: { id: true },
+    });
+    if (!channel) return false;
+
+    const first = await this.prisma.chatMessage.findFirst({
+      where: { channelId: channel.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!first?.body) return false;
+    const isBootstrap =
+      first.body.includes('Plantilla — Alta GTH') ||
+      first.body.includes('Alta detectada en sincronización GTH');
+    if (!isBootstrap || first.body === trimmed) return false;
+
+    await this.prisma.chatMessage.update({
+      where: { id: first.id },
+      data: { body: trimmed },
+    });
+    return true;
+  }
 
   formatTicketNumberDisplay(n: bigint): string {
     return `TK-${n.toString().padStart(6, '0')}`;
@@ -78,10 +162,10 @@ export class TicketsService {
     }
     const dept = user.department_roles ?? [];
     const deptIds = [...new Set(dept.map((d) => d.departmentId))];
-    const isSupervisor = dept.some((d) => d.role === 'supervisor');
-    const isTecnico = dept.some((d) => d.role === 'tecnico_area');
-    if (isSupervisor || isTecnico) {
-      if (isTecnico) {
+    const isSupervisorLike = dept.some((d) => isSupervisorLikeRole(d.role));
+    const isTecnico = dept.some((d) => d.role === DEPARTMENT_ROLES.TECNICO_AREA);
+    if (isSupervisorLike || isTecnico) {
+      if (isTecnico && !isSupervisorLike) {
         return {
           OR: [{ assignedTo: user.sub }, { departmentId: { in: deptIds } }],
         };
@@ -92,11 +176,7 @@ export class TicketsService {
   }
 
   private resolveActorRole(user: UserPayload, departmentId: string): string {
-    if (user.global_role === 'admin') return 'admin';
-    const inDept = (user.department_roles ?? []).filter((d) => d.departmentId === departmentId);
-    if (inDept.some((d) => d.role === 'supervisor')) return 'supervisor';
-    if (inDept.some((d) => d.role === 'tecnico_area')) return 'tecnico_area';
-    return 'solicitante';
+    return resolveDepartmentActorRole(user, departmentId);
   }
 
   private async assertTicketVisible(ticketId: string, user: UserPayload) {
@@ -225,6 +305,15 @@ export class TicketsService {
           },
         },
         attachments: { include: { attachment: true } },
+        gthComunicacionesTicket: {
+          select: {
+            id: true,
+            externalRowKey: true,
+            documentId: true,
+            fullName: true,
+            cargo: true,
+          },
+        },
       },
     });
 
@@ -247,6 +336,37 @@ export class TicketsService {
       })),
     );
 
+    let gthOnboarding: {
+      externalRowKey: string;
+      documentId: string | null;
+      documentType: string | null;
+      fullName: string;
+      cargo: string;
+    } | null = null;
+
+    if (ticket.gthComunicacionesTicket) {
+      const customGth = ticket.customDataJson as Record<string, unknown> | null;
+      let documentType =
+        typeof customGth?.documentType === 'string' ? (customGth.documentType as string) : null;
+      if (!documentType) {
+        const dirRow = await this.prisma.gthDirectory.findUnique({
+          where: { externalRowKey: ticket.gthComunicacionesTicket.externalRowKey },
+          select: { payload: true },
+        });
+        if (dirRow?.payload && typeof dirRow.payload === 'object') {
+          documentType =
+            pickGthDocumentType(dirRow.payload as Record<string, unknown>) || null;
+        }
+      }
+      gthOnboarding = {
+        externalRowKey: ticket.gthComunicacionesTicket.externalRowKey,
+        documentId: ticket.gthComunicacionesTicket.documentId,
+        documentType,
+        fullName: ticket.gthComunicacionesTicket.fullName,
+        cargo: ticket.gthComunicacionesTicket.cargo,
+      };
+    }
+
     return {
       ...ticket,
       ticketNumberFormatted: this.formatTicketNumberDisplay(ticket.ticketNumber),
@@ -266,6 +386,7 @@ export class TicketsService {
         ...fv,
         field: fv.templateField,
       })),
+      gthOnboarding,
     };
   }
 
@@ -387,8 +508,12 @@ export class TicketsService {
     }
 
     const supervisorRow = await this.prisma.userDepartmentRole.findFirst({
-      where: { departmentId: dto.departmentId, role: 'supervisor' },
+      where: {
+        departmentId: dto.departmentId,
+        role: { in: [DEPARTMENT_ROLES.SUPERVISOR, DEPARTMENT_ROLES.DEPT_ADMIN] },
+      },
       select: { userId: true },
+      orderBy: { role: 'asc' },
     });
     const supervisorId = supervisorRow?.userId ?? null;
 
@@ -452,6 +577,198 @@ export class TicketsService {
     await this.realtime.emitToTicketChannel(created.id, 'ticket:created', createdPayload);
 
     return this.findOne(created.id, user);
+  }
+
+  /** Creación interna desde sync GTH (sin UserPayload de sesión). */
+  async createFromGthSync(params: {
+    departmentId: string;
+    actorUserId: string;
+    subject: string;
+    description: string;
+    customDataJson: Prisma.InputJsonValue;
+  }): Promise<{ id: string; ticketNumber: bigint }> {
+    const dept = await this.prisma.department.findFirst({
+      where: { id: params.departmentId, isActive: true },
+    });
+    if (!dept) throw new NotFoundException('Departamento no encontrado');
+
+    const defaultPr =
+      (await this.prisma.ticketPriority.findFirst({ where: { code: 'media' } })) ??
+      (await this.prisma.ticketPriority.findFirst({ orderBy: { name: 'asc' } }));
+    if (!defaultPr) throw new NotFoundException('Prioridades de ticket no configuradas');
+
+    const defaultStatus = await this.prisma.ticketStatus.findFirst({
+      where: { isDefault: true },
+    });
+    if (!defaultStatus) throw new NotFoundException('Estados de ticket no configurados');
+
+    const slaDueAt = await this.sla.calculateDueAt(params.departmentId, defaultPr.id);
+
+    const supervisorRow = await this.prisma.userDepartmentRole.findFirst({
+      where: {
+        departmentId: params.departmentId,
+        role: { in: [DEPARTMENT_ROLES.SUPERVISOR, DEPARTMENT_ROLES.DEPT_ADMIN] },
+      },
+      select: { userId: true },
+      orderBy: { role: 'asc' },
+    });
+    const supervisorId = supervisorRow?.userId ?? null;
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const ticket = await tx.ticket.create({
+        data: {
+          departmentId: params.departmentId,
+          requesterId: params.actorUserId,
+          supervisorId,
+          statusId: defaultStatus.id,
+          priorityId: defaultPr.id,
+          subject: params.subject.slice(0, 200),
+          description: params.description,
+          channel: 'api',
+          customDataJson: params.customDataJson,
+          slaDueAt,
+        },
+      });
+
+      await this.ticketEvents.record(
+        {
+          ticketId: ticket.id,
+          eventType: TicketEventType.CREATED,
+          actorUserId: params.actorUserId,
+          newValue: { subject: params.subject, departmentId: params.departmentId, source: 'gth' },
+        },
+        tx,
+      );
+
+      return ticket;
+    });
+
+    await this.chat.provisionTicketChannel({
+      ticketId: created.id,
+      departmentId: params.departmentId,
+      requesterId: params.actorUserId,
+      supervisorId,
+      ticketNumber: created.ticketNumber,
+    });
+
+    await this.ensureGthTicketChatBootstrap(created.id, params.actorUserId, params.description);
+
+    await this.notifications.notifyTicketCreated(created.id, params.departmentId);
+    const createdPayload = {
+      ticketId: created.id,
+      ticketNumber: this.formatTicketNumberDisplay(created.ticketNumber),
+    };
+    this.realtime.emitToDepartment(params.departmentId, 'ticket:created', createdPayload);
+    await this.realtime.emitToTicketChannel(created.id, 'ticket:created', createdPayload);
+
+    return { id: created.id, ticketNumber: created.ticketNumber };
+  }
+
+  async getAttachmentSignedUrl(attachmentId: string): Promise<string> {
+    return this.storage.getAttachmentUrl(attachmentId);
+  }
+
+  private async assertGthPhotoIfRequired(ticketId: string, toStatusIsClosed: boolean) {
+    if (!toStatusIsClosed) return;
+    const link = await this.prisma.gthComunicacionesTicket.findUnique({
+      where: { ticketId },
+      select: { id: true },
+    });
+    if (!link) return;
+    const photo = await this.prisma.ticketAttachment.findFirst({
+      where: {
+        ticketId,
+        attachmentRole: 'gth_photo',
+        attachment: { mimeType: { startsWith: 'image/' } },
+      },
+      select: { id: true },
+    });
+    if (!photo) {
+      throw new BadRequestException(
+        'Debe adjuntar una fotografía para resolver este ticket de alta GTH',
+      );
+    }
+  }
+
+  async uploadAttachment(
+    ticketId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    user: UserPayload,
+    role = 'general',
+  ) {
+    this.assertNotAuditor(user);
+    const ticket = await this.prisma.ticket.findFirst({
+      where: { id: ticketId, ...this.buildAccessWhere(user) },
+      include: { status: true },
+    });
+    if (!ticket) throw new NotFoundException('Ticket no encontrado');
+    this.assertNotClosed(ticket.status.isClosed);
+
+    if (role === 'gth_photo' && !file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('La fotografía debe ser una imagen');
+    }
+
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
+    const storageKey = `tickets/${ticketId}/${Date.now()}-${randomUUID()}-${safeName}`;
+
+    try {
+      await this.storage.putObject(storageKey, file.buffer, file.mimetype);
+    } catch (error) {
+      const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      this.logger.error(`Ticket attachment upload failed for ${ticketId}: ${reason}`);
+      throw new ServiceUnavailableException('No se pudo subir el archivo al almacenamiento.');
+    }
+
+    const row = await this.prisma.$transaction(async (tx) => {
+      const attachment = await tx.attachment.create({
+        data: {
+          storageKey,
+          originalName: file.originalname.slice(0, 255),
+          mimeType: file.mimetype.slice(0, 127),
+          sizeBytes: file.size,
+        },
+      });
+      const ticketAttachment = await tx.ticketAttachment.create({
+        data: {
+          ticketId,
+          attachmentId: attachment.id,
+          attachmentRole: role,
+          createdBy: user.sub,
+        },
+        include: { attachment: true },
+      });
+      await this.ticketEvents.record(
+        {
+          ticketId,
+          eventType: TicketEventType.ATTACHMENT_ADDED,
+          actorUserId: user.sub,
+          newValue: { attachmentId: attachment.id, role },
+        },
+        tx,
+      );
+      return ticketAttachment;
+    });
+
+    const url = await this.storage.getAttachmentUrl(row.attachmentId);
+
+    return {
+      ...row,
+      url,
+    };
+  }
+
+  async getAttachmentContent(ticketId: string, attachmentId: string, user: UserPayload) {
+    await this.assertTicketVisible(ticketId, user);
+    const link = await this.prisma.ticketAttachment.findFirst({
+      where: { ticketId, attachmentId },
+      include: { attachment: true },
+    });
+    if (!link) throw new NotFoundException('Adjunto no encontrado');
+    const buffer = await this.storage.getObjectBuffer(link.attachment.storageKey);
+    return {
+      row: link.attachment,
+      buffer,
+    };
   }
 
   async update(id: string, dto: UpdateTicketDto, user: UserPayload) {
@@ -627,6 +944,8 @@ export class TicketsService {
     });
     if (!toStatus) throw new NotFoundException('Estado destino no encontrado');
 
+    await this.assertGthPhotoIfRequired(id, toStatus.isClosed);
+
     const hasResolution = Boolean(ticket.resolvedAt) || toStatus.code === 'resuelto';
     await this.ticketWorkflows.validateTransition({
       departmentId: ticket.departmentId,
@@ -711,6 +1030,8 @@ export class TicketsService {
       where: { code: 'cerrado' },
     });
     if (!closedStatus) throw new NotFoundException('Estado cerrado no configurado');
+
+    await this.assertGthPhotoIfRequired(id, true);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.ticket.update({

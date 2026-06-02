@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { validateSessionForApp } from './lib/api';
 import { clearSessionWallClockExceeded, hasStoredAccessToken } from './lib/authStorage';
 import { ChatPage } from './pages/ChatPage';
@@ -10,14 +10,26 @@ import { ProtectedLayout } from './pages/ProtectedLayout';
 import { TicketDetailPage } from './pages/TicketDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TicketsPage } from './pages/TicketsPage';
-import { InventoryHomePage } from './pages/inventory/InventoryHomePage';
+import { ComunicacionesGthPage } from './pages/departments/ComunicacionesGthPage';
+import { DepartmentsHomePage } from './pages/departments/DepartmentsHomePage';
+import { DepartmentUsersPage } from './pages/departments/DepartmentUsersPage';
+import { RedirectDepartmentDefault } from './pages/departments/RedirectDepartmentDefault';
+import { DEPARTMENTS_BASE } from './pages/departments/departmentExperience';
 import { InventoryHojaDeVidaPage } from './pages/inventory/InventoryHojaDeVidaPage';
 import { InventoryPlaceholderPage } from './pages/inventory/InventoryPlaceholderPage';
 
 function RedirectInventoryPcToBd() {
   const { departmentId } = useParams();
-  if (!departmentId) return <Navigate to="/inventario" replace />;
-  return <Navigate to={`/inventario/${departmentId}/hoja-de-vida/pc/bd-hoja-de-vida`} replace />;
+  if (!departmentId) return <Navigate to={DEPARTMENTS_BASE} replace />;
+  return <Navigate to={`${DEPARTMENTS_BASE}/${departmentId}/hoja-de-vida/pc/bd-hoja-de-vida`} replace />;
+}
+
+function LegacyInventarioRedirect() {
+  const location = useLocation();
+  const target = location.pathname
+    .replace(/^\/inventario/, DEPARTMENTS_BASE)
+    .replace(/\/comunicaciones-gth$/, '/altas-gth');
+  return <Navigate to={`${target}${location.search}${location.hash}`} replace />;
 }
 
 function isAuthenticated() {
@@ -139,18 +151,24 @@ export default function App() {
         <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/inventario" element={<InventoryHomePage />} />
+        <Route path="/departamentos" element={<DepartmentsHomePage />} />
+        <Route path="/departamentos/:departmentId" element={<RedirectDepartmentDefault />} />
         <Route
-          path="/inventario/:departmentId/hoja-de-vida/pc/bd-hoja-de-vida"
-          element={<InventoryHojaDeVidaPage />}
-        />
-        <Route path="/inventario/:departmentId/hoja-de-vida/pc" element={<RedirectInventoryPcToBd />} />
-        <Route
-          path="/inventario/:departmentId/hoja-de-vida/:categorySlug"
+          path="/departamentos/:departmentId/hoja-de-vida/pc/bd-hoja-de-vida"
           element={<InventoryHojaDeVidaPage />}
         />
         <Route
-          path="/inventario/:departmentId/mantenimientos"
+          path="/departamentos/:departmentId/hoja-de-vida/pc"
+          element={<RedirectInventoryPcToBd />}
+        />
+        <Route
+          path="/departamentos/:departmentId/hoja-de-vida/:categorySlug"
+          element={<InventoryHojaDeVidaPage />}
+        />
+        <Route path="/departamentos/:departmentId/altas-gth" element={<ComunicacionesGthPage />} />
+        <Route path="/departamentos/:departmentId/usuarios" element={<DepartmentUsersPage />} />
+        <Route
+          path="/departamentos/:departmentId/mantenimientos"
           element={
             <InventoryPlaceholderPage
               title="Mantenimientos"
@@ -159,7 +177,7 @@ export default function App() {
           }
         />
         <Route
-          path="/inventario/:departmentId/dar-bajas"
+          path="/departamentos/:departmentId/dar-bajas"
           element={
             <InventoryPlaceholderPage
               title="Dar bajas"
@@ -167,6 +185,8 @@ export default function App() {
             />
           }
         />
+        <Route path="/inventario" element={<Navigate to={DEPARTMENTS_BASE} replace />} />
+        <Route path="/inventario/*" element={<LegacyInventarioRedirect />} />
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />
     </Routes>

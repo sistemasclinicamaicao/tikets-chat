@@ -1,6 +1,10 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
+import {
+  DEPARTMENT_ROLES,
+  isSupervisorLikeRole,
+} from './department-access.util';
 import type { UserPayload } from './jwt-user.payload';
 
 @Injectable()
@@ -23,10 +27,9 @@ export class RolesGuard implements CanActivate {
 
     const isAuditor = user.global_role === 'auditor';
     const dept = user.department_roles ?? [];
-    const isSupervisor = dept.some((d) => d.role === 'supervisor');
-    const isTecnico = dept.some((d) => d.role === 'tecnico_area');
-    const isPlainRequester =
-      !isAuditor && !isSupervisor && !isTecnico;
+    const isSupervisor = dept.some((d) => isSupervisorLikeRole(d.role));
+    const isTecnico = dept.some((d) => d.role === DEPARTMENT_ROLES.TECNICO_AREA);
+    const isPlainRequester = !isAuditor && !isSupervisor && !isTecnico;
 
     return required.some((role) => {
       if (role === 'admin') return false;

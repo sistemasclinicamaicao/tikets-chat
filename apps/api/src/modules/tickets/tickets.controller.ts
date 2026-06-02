@@ -6,10 +6,17 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -26,6 +33,14 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { TicketFiltersDto } from './dto/ticket-filters.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsService } from './tickets.service';
+
+function inlineContentDisposition(fileName: string) {
+  const ascii = fileName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'file';
+  const encoded = encodeURIComponent(fileName).replace(/['()]/g, escape);
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+const MAX_TICKET_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
 @ApiTags('tickets')
 @ApiBearerAuth('access-token')
@@ -131,5 +146,56 @@ export class TicketsController {
     @CurrentUser() user: UserPayload,
   ) {
     return this.ticketsService.addComment(id, dto, user);
+  }
+
+  @Post(':id/attachments')
+  @ApiOperation({ summary: 'Subir adjunto al ticket' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        role: { type: 'string', example: 'gth_photo' },
+      },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_TICKET_ATTACHMENT_BYTES } }))
+  uploadAttachment(
+    @Param('id') id: string,
+    @CurrentUser() user: UserPayload,
+    @UploadedFile() file?: Express.Multer.File,
+    @Body('role') role?: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Archivo requerido');
+    }
+    return this.ticketsService.uploadAttachment(
+      id,
+      {
+        buffer: file.buffer,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      },
+      user,
+      role?.trim() || 'general',
+    );
+  }
+
+  @Get(':id/attachments/:attachmentId/content')
+  @ApiOperation({ summary: 'Contenido binario del adjunto del ticket' })
+  async getAttachmentContent(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: UserPayload,
+  ) {
+    const { row, buffer } = await this.ticketsService.getAttachmentContent(id, attachmentId, user);
+    return new StreamableFile(buffer, {
+      type: row.mimeType || 'application/octet-stream',
+      disposition: inlineContentDisposition(row.originalName),
+      length: buffer.length,
+    });
   }
 }

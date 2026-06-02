@@ -1,8 +1,17 @@
+import { DEPARTMENTS_BASE, departmentAltasGthPath, isComunicacionesDepartment } from '../departments/departmentExperience';
+
 /** Subpestaña bajo PC: datos desde integración BD (API). */
 export const INVENTORY_PC_BD_SUBPATH = 'pc/bd-hoja-de-vida' as const;
 
+export { DEPARTMENTS_BASE, departmentAltasGthPath, isComunicacionesDepartment };
+
 export function inventoryPcBdHojaDeVidaPath(departmentId: string) {
-  return `/inventario/${departmentId}/hoja-de-vida/${INVENTORY_PC_BD_SUBPATH}`;
+  return `${DEPARTMENTS_BASE}/${departmentId}/hoja-de-vida/${INVENTORY_PC_BD_SUBPATH}`;
+}
+
+/** @deprecated Use departmentAltasGthPath */
+export function inventoryComunicacionesGthPath(departmentId: string) {
+  return departmentAltasGthPath(departmentId);
 }
 
 export const SLUG_TO_CATEGORY: Record<string, string> = {

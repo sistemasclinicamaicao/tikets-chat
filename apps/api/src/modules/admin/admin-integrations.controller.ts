@@ -29,6 +29,15 @@ export class AdminIntegrationsController {
     return this.integrations.create(dto, user.userId);
   }
 
+  @Get('gth-directory')
+  @ApiOperation({
+    summary: 'Directorio GTH (integración CONEXION-GTH)',
+    description: 'GET a la URL configurada; filas normalizadas para Usuarios → GTH.',
+  })
+  getGthDirectory(@CurrentUser() user: UserPayload) {
+    return this.integrations.fetchGthDirectory(user.userId);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar integración' })
   update(

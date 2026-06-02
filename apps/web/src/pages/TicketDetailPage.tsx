@@ -16,6 +16,7 @@ import {
   isGlobalAdminRole,
   normalizeGlobalRole,
   updateTicket,
+  downloadTicketAttachment,
   type TicketDetail,
   type TicketDetailUser,
 } from '../lib/api';
@@ -382,22 +383,18 @@ export function TicketDetailPage() {
   return (
     <section className="ticket-detail">
       {live ? (
-        <p className="ticket-live-hint" style={{ fontSize: '0.85rem', opacity: 0.85 }}>
-          Actualizado en vivo
-        </p>
+        <p className="ticket-live-hint">Actualizado en vivo</p>
       ) : null}
 
-      <div className="module-card">
+      <div className="module-card ticket-detail__header-card">
         <header className="ticket-detail__masthead">
           <div>
-            <h2>
-              {ticket.ticketNumberFormatted ?? `TK-${ticket.ticketNumber}`}
-            </h2>
-            <p style={{ margin: 0, opacity: 0.85 }}>
+            <h2>{ticket.ticketNumberFormatted ?? `TK-${ticket.ticketNumber}`}</h2>
+            <p className="ticket-detail__summary">
               {ticket.department.name} · {statusLabel} · {priorityLabel}
             </p>
           </div>
-          <div className="section-nav" style={{ flexShrink: 0 }}>
+          <div className="section-nav ticket-detail__masthead-nav">
             <button type="button" onClick={() => void openChat()}>
               Abrir chat del ticket
             </button>
@@ -407,251 +404,262 @@ export function TicketDetailPage() {
 
         {actionError ? <p className="error">{actionError}</p> : null}
 
-        {canEditSubjectDesc ? (
-          <form onSubmit={onSaveEdit} style={{ marginTop: '1rem' }}>
-            <h3>Asunto y descripción</h3>
-            <label>Asunto</label>
-            <input value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
-            <label>Descripción</label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={4}
-            />
-            <button type="submit" disabled={savingEdit}>
-              {savingEdit ? 'Guardando…' : 'Guardar'}
-            </button>
-          </form>
-        ) : (
-          <>
-            <p>
-              <strong>Asunto:</strong> {ticket.subject}
-            </p>
-            <p>
-              <strong>Descripción:</strong> {ticket.description || 'Sin descripción'}
-            </p>
-          </>
-        )}
-
-        <div style={{ marginTop: '1rem', display: 'grid', gap: '0.35rem' }}>
-          <p>
-            <strong>Solicitante:</strong> {displayName(ticket.requester)}
-          </p>
-          <p>
-            <strong>Asignado a:</strong>{' '}
-            {ticket.assignee ? displayName(ticket.assignee) : '—'}
-          </p>
+        <dl className="ticket-detail__meta-grid">
+          <div className="ticket-detail__meta-item">
+            <dt>Solicitante</dt>
+            <dd>{displayName(ticket.requester)}</dd>
+          </div>
+          <div className="ticket-detail__meta-item">
+            <dt>Asignado a</dt>
+            <dd>{ticket.assignee ? displayName(ticket.assignee) : '—'}</dd>
+          </div>
           {ticket.template ? (
-            <p>
-              <strong>Plantilla:</strong> {ticket.template.name}
-            </p>
+            <div className="ticket-detail__meta-item">
+              <dt>Plantilla</dt>
+              <dd>{ticket.template.name}</dd>
+            </div>
           ) : null}
           {ticket.asset ? (
-            <p>
-              <strong>Activo:</strong> {ticket.asset.name}
-              {ticket.asset.serialNumber ? ` · S/N ${ticket.asset.serialNumber}` : ''}
-            </p>
+            <div className="ticket-detail__meta-item">
+              <dt>Activo</dt>
+              <dd>
+                {ticket.asset.name}
+                {ticket.asset.serialNumber ? ` · S/N ${ticket.asset.serialNumber}` : ''}
+              </dd>
+            </div>
           ) : null}
           {ticket.slaDueAt ? (
-            <p>
-              <strong>SLA objetivo:</strong>{' '}
-              {new Date(ticket.slaDueAt).toLocaleString()}
-              {ticket.slaBreach ? ' (incumplido)' : ''}
-            </p>
+            <div className="ticket-detail__meta-item">
+              <dt>SLA objetivo</dt>
+              <dd>
+                {new Date(ticket.slaDueAt).toLocaleString()}
+                {ticket.slaBreach ? ' (incumplido)' : ''}
+              </dd>
+            </div>
           ) : null}
-        </div>
-
-        {canChangePriority ? (
-          <form onSubmit={onSavePriority} style={{ marginTop: '1rem' }}>
-            <h3>Prioridad</h3>
-            <select value={priorityId} onChange={(e) => setPriorityId(e.target.value)}>
-              {priorities.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name ?? p.label}
-                </option>
-              ))}
-            </select>
-            <button type="submit" disabled={priorityBusy}>
-              {priorityBusy ? 'Aplicando…' : 'Cambiar prioridad'}
-            </button>
-          </form>
-        ) : null}
-
-        {canAssign ? (
-          <form onSubmit={onAssign} style={{ marginTop: '1rem' }}>
-            <h3>Asignar técnico</h3>
-            <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>
-              Debe ser técnico del departamento; la API valida la membresía.
-            </p>
-            <label>Técnico</label>
-            <select value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)}>
-              <option value="">— Elegir —</option>
-              {assignOptions.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                  {u.employee_id ? ` (${u.employee_id})` : ''}
-                </option>
-              ))}
-            </select>
-            <label>Notas (opcional)</label>
-            <input value={assignNotes} onChange={(e) => setAssignNotes(e.target.value)} />
-            <button type="submit" disabled={assignBusy}>
-              {assignBusy ? 'Asignando…' : 'Asignar'}
-            </button>
-          </form>
-        ) : null}
-
-        {canChangeStatus ? (
-          <form onSubmit={onChangeStatus} style={{ marginTop: '1rem' }}>
-            <h3>Cambiar estado</h3>
-            <label>Nuevo estado</label>
-            <select value={statusCode} onChange={(e) => setStatusCode(e.target.value)}>
-              <option value="">— Elegir —</option>
-              {statuses
-                .filter((s) => s.code && s.code !== ticket.status.code)
-                .map((s) => (
-                  <option key={s.id} value={s.code}>
-                    {s.name ?? s.label}
-                  </option>
-                ))}
-            </select>
-            <label>Comentario interno (opcional, si el workflow lo exige)</label>
-            <input value={statusComment} onChange={(e) => setStatusComment(e.target.value)} />
-            <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={statusChecklist}
-                onChange={(e) => setStatusChecklist(e.target.checked)}
-              />
-              Lista de verificación completada (si aplica)
-            </label>
-            <button type="submit" disabled={statusBusy || !statusCode}>
-              {statusBusy ? 'Aplicando…' : 'Cambiar estado'}
-            </button>
-          </form>
-        ) : null}
-
-        {canClose ? (
-          <form onSubmit={onClose} style={{ marginTop: '1rem' }}>
-            <h3>Cerrar ticket</h3>
-            <label>Resumen de cierre (mín. 30 caracteres)</label>
-            <textarea
-              value={closureSummary}
-              onChange={(e) => setClosureSummary(e.target.value)}
-              rows={3}
-              minLength={30}
-            />
-            <label>Comentario público (opcional)</label>
-            <input value={closureComment} onChange={(e) => setClosureComment(e.target.value)} />
-            <button type="submit" disabled={closureBusy || closureSummary.trim().length < 30}>
-              {closureBusy ? 'Cerrando…' : 'Cerrar'}
-            </button>
-          </form>
-        ) : null}
-
-        {canComment ? (
-          <form onSubmit={onAddComment} style={{ marginTop: '1rem' }}>
-            <h3>Nuevo comentario</h3>
-            <textarea
-              value={commentBody}
-              onChange={(e) => setCommentBody(e.target.value)}
-              rows={3}
-              placeholder="Escribe el comentario…"
-            />
-            {canInternalComment ? (
-              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={commentInternal}
-                  onChange={(e) => setCommentInternal(e.target.checked)}
-                />
-                Comentario interno (equipo)
-              </label>
-            ) : null}
-            <button type="submit" disabled={commentBusy || !commentBody.trim()}>
-              {commentBusy ? 'Enviando…' : 'Publicar'}
-            </button>
-          </form>
-        ) : null}
+        </dl>
       </div>
 
-      {ticket.formValues.length > 0 ? (
-        <div className="module-card" style={{ marginTop: '1rem' }}>
-          <h3>Campos de plantilla</h3>
-          <ul style={{ paddingLeft: '1.2rem' }}>
-            {ticket.formValues.map((fv) => (
-              <li key={fv.id}>
-                <strong>{fv.field.fieldLabel}</strong> ({fv.field.fieldType}):{' '}
-                {formatJsonValue(fv.valueJson)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {ticket.attachments.length > 0 ? (
-        <div className="module-card" style={{ marginTop: '1rem' }}>
-          <h3>Adjuntos</h3>
-          <ul style={{ paddingLeft: '1.2rem' }}>
-            {ticket.attachments.map((a) => (
-              <li key={a.id}>
-                <a href={a.url} target="_blank" rel="noreferrer">
-                  {a.attachment.originalName}
-                </a>{' '}
-                <span style={{ opacity: 0.8 }}>
-                  ({a.attachment.mimeType}, {Math.round(a.attachment.sizeBytes / 1024)} KB)
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="module-card" style={{ marginTop: '1rem' }}>
-        <h3>Línea de tiempo</h3>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {timeline.map((row) =>
-            row.kind === 'event' ? (
-              <li
-                key={`e-${row.id}`}
-                style={{
-                  borderLeft: '3px solid #888',
-                  paddingLeft: '0.75rem',
-                  marginBottom: '0.75rem',
-                }}
-              >
-                <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                  {new Date(row.createdAt).toLocaleString()}
-                  {row.actor ? ` · ${displayName(row.actor)}` : ''}
-                </div>
-                <div>
-                  <strong>{eventTypeLabel(row.eventType)}</strong>
-                  {row.notes ? ` — ${row.notes}` : ''}
-                </div>
-                {row.oldValueJson && Object.keys(row.oldValueJson).length > 0 ? (
-                  <pre style={{ fontSize: '0.75rem', overflow: 'auto' }}>
-                    {JSON.stringify({ from: row.oldValueJson, to: row.newValueJson }, null, 2)}
-                  </pre>
-                ) : null}
-              </li>
-            ) : (
-              <li
-                key={`c-${row.id}`}
-                style={{
-                  borderLeft: '3px solid #4a9',
-                  paddingLeft: '0.75rem',
-                  marginBottom: '0.75rem',
-                }}
-              >
-                <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                  {new Date(row.createdAt).toLocaleString()} · {displayName(row.user)} ·{' '}
-                  {row.commentType === 'internal' ? 'Interno' : 'Público'}
-                </div>
-                <div>{row.content}</div>
-              </li>
-            ),
+      <div className="ticket-detail__layout">
+        <div className="ticket-detail__main">
+          {canEditSubjectDesc ? (
+            <form className="module-card ticket-detail__panel" onSubmit={onSaveEdit}>
+              <h3>Asunto y descripción</h3>
+              <label>Asunto</label>
+              <input value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
+              <label>Descripción</label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={4}
+              />
+              <button type="submit" disabled={savingEdit}>
+                {savingEdit ? 'Guardando…' : 'Guardar'}
+              </button>
+            </form>
+          ) : (
+            <div className="module-card ticket-detail__panel">
+              <p>
+                <strong>Asunto:</strong> {ticket.subject}
+              </p>
+              <p>
+                <strong>Descripción:</strong> {ticket.description || 'Sin descripción'}
+              </p>
+            </div>
           )}
-        </ul>
+
+          {ticket.formValues.length > 0 ? (
+            <div className="module-card ticket-detail__panel">
+              <h3>Campos de plantilla</h3>
+              <ul className="ticket-detail__list">
+                {ticket.formValues.map((fv) => (
+                  <li key={fv.id}>
+                    <strong>{fv.field.fieldLabel}</strong> ({fv.field.fieldType}):{' '}
+                    {formatJsonValue(fv.valueJson)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {ticket.attachments.length > 0 ? (
+            <div className="module-card ticket-detail__panel">
+              <h3>Adjuntos</h3>
+              <ul className="ticket-detail__list">
+                {ticket.attachments.map((a) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      className="ticket-detail__link-btn"
+                      onClick={() =>
+                        void downloadTicketAttachment(
+                          ticket.id,
+                          a.attachment.id,
+                          a.attachment.originalName,
+                        ).catch(() => setActionError('No se pudo descargar el adjunto'))
+                      }
+                    >
+                      {a.attachment.originalName}
+                    </button>{' '}
+                    <span className="ticket-detail__muted">
+                      ({a.attachment.mimeType}, {Math.round(a.attachment.sizeBytes / 1024)} KB)
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="module-card ticket-detail__panel">
+            <h3>Línea de tiempo</h3>
+            <ul className="ticket-detail__timeline">
+              {timeline.map((row) =>
+                row.kind === 'event' ? (
+                  <li key={`e-${row.id}`} className="ticket-detail__timeline-event">
+                    <div className="ticket-detail__timeline-meta">
+                      {new Date(row.createdAt).toLocaleString()}
+                      {row.actor ? ` · ${displayName(row.actor)}` : ''}
+                    </div>
+                    <div>
+                      <strong>{eventTypeLabel(row.eventType)}</strong>
+                      {row.notes ? ` — ${row.notes}` : ''}
+                    </div>
+                    {row.oldValueJson && Object.keys(row.oldValueJson).length > 0 ? (
+                      <pre className="ticket-detail__timeline-json">
+                        {JSON.stringify({ from: row.oldValueJson, to: row.newValueJson }, null, 2)}
+                      </pre>
+                    ) : null}
+                  </li>
+                ) : (
+                  <li key={`c-${row.id}`} className="ticket-detail__timeline-comment">
+                    <div className="ticket-detail__timeline-meta">
+                      {new Date(row.createdAt).toLocaleString()} · {displayName(row.user)} ·{' '}
+                      {row.commentType === 'internal' ? 'Interno' : 'Público'}
+                    </div>
+                    <div>{row.content}</div>
+                  </li>
+                ),
+              )}
+            </ul>
+          </div>
+        </div>
+
+        <aside className="ticket-detail__aside module-card">
+          <h3 className="ticket-detail__aside-title">Acciones</h3>
+
+          {canChangePriority ? (
+            <form className="ticket-detail__action-block" onSubmit={onSavePriority}>
+              <h4>Prioridad</h4>
+              <select value={priorityId} onChange={(e) => setPriorityId(e.target.value)}>
+                {priorities.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name ?? p.label}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" disabled={priorityBusy}>
+                {priorityBusy ? 'Aplicando…' : 'Cambiar prioridad'}
+              </button>
+            </form>
+          ) : null}
+
+          {canAssign ? (
+            <form className="ticket-detail__action-block" onSubmit={onAssign}>
+              <h4>Asignar técnico</h4>
+              <p className="ticket-detail__action-hint">
+                Debe ser técnico del departamento; la API valida la membresía.
+              </p>
+              <label>Técnico</label>
+              <select value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)}>
+                <option value="">— Elegir —</option>
+                {assignOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                    {u.employee_id ? ` (${u.employee_id})` : ''}
+                  </option>
+                ))}
+              </select>
+              <label>Notas (opcional)</label>
+              <input value={assignNotes} onChange={(e) => setAssignNotes(e.target.value)} />
+              <button type="submit" disabled={assignBusy}>
+                {assignBusy ? 'Asignando…' : 'Asignar'}
+              </button>
+            </form>
+          ) : null}
+
+          {canChangeStatus ? (
+            <form className="ticket-detail__action-block" onSubmit={onChangeStatus}>
+              <h4>Cambiar estado</h4>
+              <label>Nuevo estado</label>
+              <select value={statusCode} onChange={(e) => setStatusCode(e.target.value)}>
+                <option value="">— Elegir —</option>
+                {statuses
+                  .filter((s) => s.code && s.code !== ticket.status.code)
+                  .map((s) => (
+                    <option key={s.id} value={s.code}>
+                      {s.name ?? s.label}
+                    </option>
+                  ))}
+              </select>
+              <label>Comentario interno (opcional)</label>
+              <input value={statusComment} onChange={(e) => setStatusComment(e.target.value)} />
+              <label className="ticket-detail__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={statusChecklist}
+                  onChange={(e) => setStatusChecklist(e.target.checked)}
+                />
+                Lista de verificación completada (si aplica)
+              </label>
+              <button type="submit" disabled={statusBusy || !statusCode}>
+                {statusBusy ? 'Aplicando…' : 'Cambiar estado'}
+              </button>
+            </form>
+          ) : null}
+
+          {canClose ? (
+            <form className="ticket-detail__action-block" onSubmit={onClose}>
+              <h4>Cerrar ticket</h4>
+              <label>Resumen de cierre (mín. 30 caracteres)</label>
+              <textarea
+                value={closureSummary}
+                onChange={(e) => setClosureSummary(e.target.value)}
+                rows={3}
+                minLength={30}
+              />
+              <label>Comentario público (opcional)</label>
+              <input value={closureComment} onChange={(e) => setClosureComment(e.target.value)} />
+              <button type="submit" disabled={closureBusy || closureSummary.trim().length < 30}>
+                {closureBusy ? 'Cerrando…' : 'Cerrar'}
+              </button>
+            </form>
+          ) : null}
+
+          {canComment ? (
+            <form className="ticket-detail__action-block" onSubmit={onAddComment}>
+              <h4>Nuevo comentario</h4>
+              <textarea
+                value={commentBody}
+                onChange={(e) => setCommentBody(e.target.value)}
+                rows={3}
+                placeholder="Escribe el comentario…"
+              />
+              {canInternalComment ? (
+                <label className="ticket-detail__checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={commentInternal}
+                    onChange={(e) => setCommentInternal(e.target.checked)}
+                  />
+                  Comentario interno (equipo)
+                </label>
+              ) : null}
+              <button type="submit" disabled={commentBusy || !commentBody.trim()}>
+                {commentBusy ? 'Enviando…' : 'Publicar'}
+              </button>
+            </form>
+          ) : null}
+        </aside>
       </div>
     </section>
   );

@@ -1,59 +1,33 @@
-import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { InventoryPcChecklistForm } from './inventory/components/InventoryPcChecklistForm';
+import { SettingsUsersGthPane } from './SettingsUsersGthPane';
+import { SettingsSystemUsersPane } from './settings/SettingsSystemUsersPane';
+import { SettingsSectionCard } from './settings/SettingsSectionCard';
+import { SettingsSubTabs } from './settings/SettingsSubTabs';
+import { SettingsTemplatesPanel } from './settings/SettingsTemplatesPanel';
+import { SettingsTicketsPanel } from './settings/SettingsTicketsPanel';
+import { SettingsWorkflowsPanel } from './settings/SettingsWorkflowsPanel';
+import { settingsErrorMessage } from './settings/settingsUtils';
 import { DEFAULT_SETTINGS_TAB, isValidSettingsTab, type SettingsTabId } from './settingsNavConfig';
 import {
-  adminCreateDepartment,
   adminCreateIntegration,
-  adminCreateTemplate,
-  adminCreateTemplateField,
-  adminCreateTicketPriority,
-  adminCreateTicketStatus,
-  adminCreateWorkflow,
-  adminCreateWorkflowTransition,
   adminDeleteIntegration,
-  adminDeleteTemplateField,
-  adminDeleteTicketPriority,
-  adminDeleteTicketStatus,
-  adminDeleteWorkflowTransition,
   adminGetRuntimeConfig,
-  adminListDepartments,
   adminListIntegrations,
-  adminListTemplates,
-  adminListTicketPriorities,
-  adminListTicketStatuses,
-  adminListUsers,
-  adminListWorkflows,
   adminProbeIntegration,
-  adminSetUserDepartmentRoles,
-  adminUpdateDepartment,
   adminUpdateIntegration,
-  adminUpdateTemplate,
-  adminUpdateUserGlobalRole,
-  adminUpdateWorkflow,
   ApiError,
   getCurrentUserProfile,
   getTicketDepartments,
   isGlobalAdminRole,
   normalizeGlobalRole,
   persistUserRolesFromProfile,
-  type AdminDepartmentRow,
   type AdminIntegrationRow,
   type AdminRuntimeConfig,
-  type AdminTemplateRow,
-  type AdminTicketPriorityRow,
-  type AdminTicketStatusRow,
-  type AdminUserRow,
-  type AdminWorkflowRow,
   type CurrentUserProfile,
-  type DepartmentRoleEntry,
+  type TicketDepartmentOption,
 } from '../lib/api';
-
-function settingsErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error && err.message.trim()) return err.message;
-  return fallback;
-}
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -418,16 +392,12 @@ function IntegrationsProbePreviewBody({ model }: { model: IntegrationsProbeModel
 
 function roleLabel(role: string): string {
   const map: Record<string, string> = {
+    dept_admin: 'Administrador de departamento',
     supervisor: 'Supervisor',
     tecnico_area: 'Técnico de área',
     solicitante: 'Solicitante',
   };
   return map[role] ?? role;
-}
-
-function etiquetaCategoriaEstado(category: string): string {
-  if (category === 'active' || category === 'activo') return 'Activo';
-  return category;
 }
 
 function SettingsUserAccount({
@@ -506,6 +476,10 @@ function SettingsUserAccount({
             </ul>
           )}
           <p className="settings-muted" style={{ marginTop: '1.25rem', marginBottom: 0 }}>
+            El rol global y los roles por departamento son <strong>independientes</strong>: puede tener
+            ambos a la vez (p. ej. administrador de plataforma y administrador de un área concreta).
+          </p>
+          <p className="settings-muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
             La sesión y el acceso a tickets/chat los define el servidor según estos datos.
           </p>
           <p className="settings-muted" style={{ marginTop: '1rem', marginBottom: 0 }}>
@@ -599,7 +573,15 @@ export function SettingsPage() {
   }
 
   return (
-    <div className={tab === 'integrations' ? 'settings-page settings-page--integrations-wide' : 'settings-page'}>
+    <div
+      className={
+        tab === 'integrations'
+          ? 'settings-page settings-page--integrations-wide'
+          : tab === 'users'
+            ? 'settings-page settings-page--users-wide'
+            : 'settings-page'
+      }
+    >
       <header className="settings-header">
         <h1 className="settings-title">Configuración</h1>
         <p className="settings-subtitle">Parámetros de negocio y catálogos (solo administradores).</p>
@@ -610,44 +592,28 @@ export function SettingsPage() {
         </p>
       ) : null}
       {tab === 'integrations' ? (
-        <div className="settings-api-panel-tabs" role="tablist" aria-label="Secciones integraciones API">
-          <div className="settings-tab-row">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={integrationsPane === 'list'}
-              className={`settings-tab${integrationsPane === 'list' ? ' settings-tab--active' : ''}`}
-              onClick={() => setIntegrationsPane('list')}
-            >
-              Registradas
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={integrationsPane === 'new'}
-              className={`settings-tab${integrationsPane === 'new' ? ' settings-tab--active' : ''}`}
-              onClick={() => setIntegrationsPane('new')}
-            >
-              Nueva integración
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={integrationsPane === 'preview'}
-              className={`settings-tab${integrationsPane === 'preview' ? ' settings-tab--active' : ''}`}
-              onClick={() => setIntegrationsPane('preview')}
-            >
-              Vista previa del sondeo
-            </button>
-          </div>
-        </div>
+        <SettingsSubTabs
+          tabs={[
+            { id: 'list' as const, label: 'Registradas' },
+            { id: 'new' as const, label: 'Nueva integración' },
+            { id: 'preview' as const, label: 'Vista previa del sondeo' },
+          ]}
+          active={integrationsPane}
+          onChange={setIntegrationsPane}
+          ariaLabel="Secciones integraciones API"
+          className="settings-tab-row settings-api-panel-tabs"
+        />
       ) : null}
       <div className="settings-panel" role="region" aria-label="Contenido de configuración">
-        {tab === 'account' && profile ? <SettingsUserAccount profile={profile} embedded /> : null}
+        {tab === 'account' && profile ? (
+          <SettingsSectionCard title="Mi cuenta">
+            <SettingsUserAccount profile={profile} embedded />
+          </SettingsSectionCard>
+        ) : null}
         {tab === 'general' ? <SettingsGeneral /> : null}
-        {tab === 'tickets' ? <SettingsTickets onMessage={setHint} /> : null}
-        {tab === 'workflows' ? <SettingsWorkflows onMessage={setHint} /> : null}
-        {tab === 'templates' ? <SettingsTemplates onMessage={setHint} /> : null}
+        {tab === 'tickets' ? <SettingsTicketsPanel onMessage={setHint} /> : null}
+        {tab === 'workflows' ? <SettingsWorkflowsPanel onMessage={setHint} /> : null}
+        {tab === 'templates' ? <SettingsTemplatesPanel onMessage={setHint} /> : null}
         {tab === 'chat' ? <SettingsChat /> : null}
         {tab === 'inventory_pc' ? <SettingsInventoryPc onMessage={setHint} /> : null}
         {tab === 'system' ? <SettingsSystem onMessage={setHint} /> : null}
@@ -666,41 +632,53 @@ export function SettingsPage() {
 
 function SettingsGeneral() {
   return (
-    <section>
-      <h2>General</h2>
-      <p className="settings-muted">
-        Preferencias globales de la organización. Los datos personales están en el menú del avatar (cabecera).
-      </p>
-    </section>
+    <SettingsSectionCard
+      title="General"
+      description="Preferencias globales de la organización. Los datos personales están en el menú del avatar (cabecera)."
+    >
+      <ul className="settings-list settings-list--plain">
+        <li>
+          <strong>Tickets</strong> — departamentos, estados, prioridades, flujos y plantillas por departamento.
+        </li>
+        <li>
+          <strong>Integraciones API</strong> — conexiones externas y sondeo de datos.
+        </li>
+        <li>
+          <strong>Usuarios</strong> — roles globales, roles por departamento y directorio GTH.
+        </li>
+        <li>
+          <strong>Sistema</strong> — valores efectivos del servidor (límites de chat, storage, auditoría).
+        </li>
+      </ul>
+    </SettingsSectionCard>
   );
 }
 
 function SettingsInventoryPc({ onMessage }: { onMessage: (s: string | null) => void }) {
   return (
-    <section>
-      <h2>Inventario PC — listas de sugerencias</h2>
-      <p className="settings-muted">
-        Opciones que aparecen como sugerencias al registrar o editar equipos PC (tipo de disco, RAM, sistema
-        operativo, etc.). Los equipos siguen admitiendo texto libre.
-      </p>
+    <SettingsSectionCard
+      title="Inventario PC — listas de sugerencias"
+      description="Opciones que aparecen como sugerencias al registrar o editar equipos PC (tipo de disco, RAM, sistema operativo, etc.). Los equipos siguen admitiendo texto libre."
+    >
       <InventoryPcChecklistForm
         onMessage={(m) => {
           onMessage(m);
         }}
       />
-    </section>
+    </SettingsSectionCard>
   );
 }
 
 function SettingsChat() {
   return (
-    <section>
-      <h2>Chat</h2>
-      <p>
-        Límite del directorio de usuarios y tamaño máximo de adjuntos se configuran en el servidor (variables de
-        entorno). Consulta la pestaña <strong>Sistema</strong> para valores efectivos no secretos.
+    <SettingsSectionCard
+      title="Chat"
+      description="Límite del directorio de usuarios y tamaño máximo de adjuntos se configuran en el servidor (variables de entorno)."
+    >
+      <p className="settings-muted">
+        Consulta la pestaña <strong>Sistema</strong> para ver los valores efectivos no secretos.
       </p>
-    </section>
+    </SettingsSectionCard>
   );
 }
 
@@ -712,7 +690,7 @@ function SettingsSystem({ onMessage }: { onMessage: (s: string | null) => void }
     setErr(null);
     void adminGetRuntimeConfig()
       .then(setCfg)
-      .catch((e) => setErr(e instanceof ApiError ? e.message : 'Error'));
+      .catch((e) => setErr(settingsErrorMessage(e, 'No se pudo cargar la configuración del sistema.')));
   }, []);
 
   useEffect(() => {
@@ -720,9 +698,7 @@ function SettingsSystem({ onMessage }: { onMessage: (s: string | null) => void }
   }, [load]);
 
   return (
-    <section>
-      <h2>Sistema</h2>
-      <p className="settings-muted">Sin secretos (contraseñas, claves JWT o URL completa de base de datos).</p>
+    <SettingsSectionCard title="Sistema" description="Sin secretos (contraseñas, claves JWT o URL completa de base de datos).">
       {err ? <p className="settings-error">{err}</p> : null}
       <button type="button" className="settings-btn" onClick={() => (load(), onMessage(null))}>
         Actualizar
@@ -739,578 +715,12 @@ function SettingsSystem({ onMessage }: { onMessage: (s: string | null) => void }
       ) : (
         <p>Cargando…</p>
       )}
-    </section>
-  );
-}
-
-function SettingsTickets({ onMessage }: { onMessage: (s: string | null) => void }) {
-  const [departments, setDepartments] = useState<AdminDepartmentRow[]>([]);
-  const [statuses, setStatuses] = useState<AdminTicketStatusRow[]>([]);
-  const [priorities, setPriorities] = useState<AdminTicketPriorityRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(() => {
-    setLoading(true);
-    onMessage(null);
-    void Promise.all([adminListDepartments(), adminListTicketStatuses(), adminListTicketPriorities()])
-      .then(([d, s, p]) => {
-        setDepartments(d);
-        setStatuses(s);
-        setPriorities(p);
-      })
-      .catch((e) => onMessage(e instanceof ApiError ? e.message : 'Error al cargar'))
-      .finally(() => setLoading(false));
-  }, [onMessage]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  async function addDepartment(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const name = String(fd.get('name') ?? '').trim();
-    if (!name) return;
-    try {
-      await adminCreateDepartment({ name, description: String(fd.get('description') ?? '').trim() || undefined });
-      onMessage('Departamento creado');
-      refresh();
-      e.currentTarget.reset();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  async function toggleDept(d: AdminDepartmentRow) {
-    try {
-      await adminUpdateDepartment(d.id, { is_active: !d.isActive });
-      refresh();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  async function saveDeptInventory(e: FormEvent<HTMLFormElement>, departmentId: string) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const example = String(fd.get('asset_inventory_code_example') ?? '').trim();
-    const pattern = String(fd.get('asset_inventory_code_pattern') ?? '').trim();
-    try {
-      await adminUpdateDepartment(departmentId, {
-        asset_inventory_code_example: example || null,
-        asset_inventory_code_pattern: pattern || null,
-      });
-      onMessage('Formato de código de equipos guardado');
-      refresh();
-    } catch (err) {
-      onMessage(settingsErrorMessage(err, 'No se pudo guardar el formato de código.'));
-    }
-  }
-
-  async function addStatus(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    try {
-      await adminCreateTicketStatus({
-        code: String(fd.get('code') ?? '').trim(),
-        name: String(fd.get('name') ?? '').trim(),
-        category: String(fd.get('category') ?? 'activo').trim() || 'activo',
-        is_closed: fd.get('is_closed') === 'on',
-        is_default: fd.get('is_default') === 'on',
-        sort_order: Number(fd.get('sort_order') ?? 0) || 0,
-      });
-      onMessage('Estado creado');
-      refresh();
-      e.currentTarget.reset();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  async function addPriority(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    try {
-      await adminCreateTicketPriority({
-        code: String(fd.get('code') ?? '').trim(),
-        name: String(fd.get('name') ?? '').trim(),
-        response_minutes: fd.get('response_minutes')
-          ? Number(fd.get('response_minutes'))
-          : null,
-        resolution_minutes: fd.get('resolution_minutes')
-          ? Number(fd.get('resolution_minutes'))
-          : null,
-      });
-      onMessage('Prioridad creada');
-      refresh();
-      e.currentTarget.reset();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  if (loading) return <p>Cargando catálogos…</p>;
-
-  return (
-    <section className="settings-stack">
-      <h2>Tickets — catálogos</h2>
-
-      <h3>Departamentos</h3>
-      <table className="settings-table">
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Activo</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {departments.map((d) => (
-            <Fragment key={d.id}>
-              <tr>
-                <td>{d.name}</td>
-                <td>{d.isActive ? 'sí' : 'no'}</td>
-                <td>
-                  <button type="button" className="settings-btn settings-btn--small" onClick={() => void toggleDept(d)}>
-                    {d.isActive ? 'Desactivar' : 'Activar'}
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={3} style={{ paddingTop: 0, borderTop: 'none' }}>
-                  <form
-                    key={`inv-${d.id}-${d.updatedAt}`}
-                    className="settings-form settings-form--grid"
-                    style={{ marginBottom: '1rem' }}
-                    onSubmit={(e) => void saveDeptInventory(e, d.id)}
-                  >
-                    <p className="settings-muted" style={{ gridColumn: '1 / -1', margin: '0 0 0.35rem' }}>
-                      Códigos de inventario de equipos: el valor debe coincidir con el número de serie registrado en
-                      cada activo al vincularlo a un ticket.
-                    </p>
-                    <input
-                      name="asset_inventory_code_example"
-                      placeholder="Ejemplo (p. ej. SYSTEM0000)"
-                      defaultValue={d.assetInventoryCodeExample ?? ''}
-                      className="chat-input"
-                      aria-label={`Ejemplo código inventario ${d.name}`}
-                    />
-                    <input
-                      name="asset_inventory_code_pattern"
-                      placeholder="Regex (p. ej. ^SYSTEM\\d{4}$)"
-                      defaultValue={d.assetInventoryCodePattern ?? ''}
-                      className="chat-input"
-                      aria-label={`Patrón regex inventario ${d.name}`}
-                    />
-                    <button type="submit" className="settings-btn settings-btn--small">
-                      Guardar formato
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-      <form className="settings-form" onSubmit={(e) => void addDepartment(e)}>
-        <input name="name" placeholder="Nombre" required className="chat-input" />
-        <input name="description" placeholder="Descripción" className="chat-input" />
-        <button type="submit" className="settings-btn">
-          Añadir departamento
-        </button>
-      </form>
-
-      <h3>Estados</h3>
-      <table className="settings-table">
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Nombre</th>
-            <th>Categoría</th>
-            <th>Por defecto</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {statuses.map((s) => (
-            <tr key={s.id}>
-              <td>{s.code}</td>
-              <td>{s.name}</td>
-              <td>{etiquetaCategoriaEstado(s.category)}</td>
-              <td>{s.isDefault ? 'sí' : 'no'}</td>
-              <td>
-                <button
-                  type="button"
-                  className="settings-btn settings-btn--small settings-btn--danger"
-                  onClick={() =>
-                    void adminDeleteTicketStatus(s.id)
-                      .then(() => refresh())
-                      .catch((err) => onMessage(err instanceof ApiError ? err.message : 'Error'))
-                  }
-                >
-                  Eliminar
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <form className="settings-form settings-form--grid" onSubmit={(e) => void addStatus(e)}>
-        <input name="code" placeholder="código" required className="chat-input" />
-        <input name="name" placeholder="nombre" required className="chat-input" />
-        <input name="category" placeholder="categoría" className="chat-input" defaultValue="activo" />
-        <input name="sort_order" type="number" placeholder="orden" className="chat-input" defaultValue={0} />
-        <label className="settings-check">
-          <input name="is_closed" type="checkbox" /> Cerrado
-        </label>
-        <label className="settings-check">
-          <input name="is_default" type="checkbox" /> Por defecto
-        </label>
-        <button type="submit" className="settings-btn">
-          Añadir estado
-        </button>
-      </form>
-
-      <h3>Prioridades</h3>
-      <table className="settings-table">
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Nombre</th>
-            <th>Resp. min</th>
-            <th>Resol. min</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {priorities.map((p) => (
-            <tr key={p.id}>
-              <td>{p.code}</td>
-              <td>{p.name}</td>
-              <td>{p.responseMinutes ?? '—'}</td>
-              <td>{p.resolutionMinutes ?? '—'}</td>
-              <td>
-                <button
-                  type="button"
-                  className="settings-btn settings-btn--small settings-btn--danger"
-                  onClick={() =>
-                    void adminDeleteTicketPriority(p.id)
-                      .then(() => refresh())
-                      .catch((err) => onMessage(err instanceof ApiError ? err.message : 'Error'))
-                  }
-                >
-                  Eliminar
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <form className="settings-form settings-form--grid" onSubmit={(e) => void addPriority(e)}>
-        <input name="code" placeholder="código" required className="chat-input" />
-        <input name="name" placeholder="nombre" required className="chat-input" />
-        <input name="response_minutes" type="number" placeholder="min respuesta" className="chat-input" />
-        <input name="resolution_minutes" type="number" placeholder="min resolución" className="chat-input" />
-        <button type="submit" className="settings-btn">
-          Añadir prioridad
-        </button>
-      </form>
-    </section>
-  );
-}
-
-function SettingsWorkflows({ onMessage }: { onMessage: (s: string | null) => void }) {
-  const [rows, setRows] = useState<AdminWorkflowRow[]>([]);
-  const [statuses, setStatuses] = useState<AdminTicketStatusRow[]>([]);
-  const [departments, setDepartments] = useState<AdminDepartmentRow[]>([]);
-
-  const refresh = useCallback(() => {
-    onMessage(null);
-    void Promise.all([adminListWorkflows(), adminListTicketStatuses(), adminListDepartments()]).then(
-      ([w, s, d]) => {
-        setRows(w);
-        setStatuses(s);
-        setDepartments(d);
-      },
-    );
-  }, [onMessage]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  async function addWorkflow(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    try {
-      await adminCreateWorkflow({
-        department_id: String(fd.get('department_id')),
-        name: String(fd.get('name') ?? '').trim(),
-      });
-      onMessage('Flujo creado');
-      refresh();
-      e.currentTarget.reset();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  async function addTransition(e: FormEvent<HTMLFormElement>, workflowId: string) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    try {
-      await adminCreateWorkflowTransition(workflowId, {
-        from_status_id: String(fd.get('from_status_id')),
-        to_status_id: String(fd.get('to_status_id')),
-        requires_comment: fd.get('requires_comment') === 'on',
-        requires_resolution: fd.get('requires_resolution') === 'on',
-        requires_checklist: fd.get('requires_checklist') === 'on',
-        requires_supervisor_approval: fd.get('requires_supervisor_approval') === 'on',
-      });
-      onMessage('Transición añadida');
-      refresh();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  return (
-    <section className="settings-stack">
-      <h2>Flujos y transiciones</h2>
-      <form className="settings-form settings-form--grid" onSubmit={(e) => void addWorkflow(e)}>
-        <select name="department_id" required className="chat-input">
-          <option value="">Departamento…</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <input name="name" placeholder="Nombre del flujo" required className="chat-input" />
-        <button type="submit" className="settings-btn">
-          Crear flujo
-        </button>
-      </form>
-      {rows.map((w) => (
-        <div key={w.id} className="settings-card">
-          <div className="settings-card-head">
-            <strong>{w.name}</strong>
-            <span className="settings-muted"> {w.department?.name ?? w.departmentId}</span>
-            <button
-              type="button"
-              className="settings-btn settings-btn--small"
-              onClick={() =>
-                void adminUpdateWorkflow(w.id, { is_active: !w.isActive })
-                  .then(() => refresh())
-                  .catch((err) => onMessage(err instanceof ApiError ? err.message : 'Error'))
-              }
-            >
-              {w.isActive ? 'Desactivar' : 'Activar'}
-            </button>
-          </div>
-          <ul className="settings-list">
-            {w.transitions.map((t) => (
-              <li key={t.id}>
-                {t.fromStatus?.code ?? t.fromStatusId} → {t.toStatus?.code ?? t.toStatusId}
-                <button
-                  type="button"
-                  className="settings-btn settings-btn--small settings-btn--danger"
-                  onClick={() =>
-                    void adminDeleteWorkflowTransition(t.id)
-                      .then(() => refresh())
-                      .catch((err) => onMessage(err instanceof ApiError ? err.message : 'Error'))
-                  }
-                >
-                  Quitar
-                </button>
-              </li>
-            ))}
-          </ul>
-          <form className="settings-form settings-form--grid" onSubmit={(e) => void addTransition(e, w.id)}>
-            <select name="from_status_id" required className="chat-input">
-              <option value="">Desde estado…</option>
-              {statuses.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.code} — {s.name}
-                </option>
-              ))}
-            </select>
-            <select name="to_status_id" required className="chat-input">
-              <option value="">Hacia estado…</option>
-              {statuses.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.code} — {s.name}
-                </option>
-              ))}
-            </select>
-            <label className="settings-check">
-              <input name="requires_comment" type="checkbox" /> Comentario
-            </label>
-            <label className="settings-check">
-              <input name="requires_resolution" type="checkbox" /> Resolución
-            </label>
-            <label className="settings-check">
-              <input name="requires_checklist" type="checkbox" /> Lista de verificación
-            </label>
-            <label className="settings-check">
-              <input name="requires_supervisor_approval" type="checkbox" /> Supervisor
-            </label>
-            <button type="submit" className="settings-btn">
-              Añadir transición
-            </button>
-          </form>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function SettingsTemplates({ onMessage }: { onMessage: (s: string | null) => void }) {
-  const [rows, setRows] = useState<AdminTemplateRow[]>([]);
-  const [departments, setDepartments] = useState<AdminDepartmentRow[]>([]);
-
-  const refresh = useCallback(() => {
-    onMessage(null);
-    void Promise.all([adminListTemplates(), adminListDepartments()])
-      .then(([t, d]) => {
-        setRows(t);
-        setDepartments(d);
-      })
-      .catch((err) =>
-        onMessage(settingsErrorMessage(err, 'No se pudieron cargar las plantillas o departamentos.')),
-      );
-  }, [onMessage]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  async function addTpl(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    try {
-      await adminCreateTemplate({
-        department_id: String(fd.get('department_id')),
-        name: String(fd.get('name') ?? '').trim(),
-        usage_type: String(fd.get('usage_type') ?? 'ticket_create').trim(),
-      });
-      onMessage('Plantilla creada');
-      refresh();
-      e.currentTarget.reset();
-    } catch (err) {
-      onMessage(settingsErrorMessage(err, 'No se pudo crear la plantilla.'));
-    }
-  }
-
-  async function addField(e: FormEvent<HTMLFormElement>, templateId: string) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    let config: Record<string, unknown> = {};
-    const raw = String(fd.get('config_json') ?? '').trim();
-    if (raw) {
-      try {
-        config = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        onMessage('config_json no es JSON válido');
-        return;
-      }
-    }
-    try {
-      await adminCreateTemplateField(templateId, {
-        field_key: String(fd.get('field_key') ?? '').trim(),
-        field_label: String(fd.get('field_label') ?? '').trim(),
-        field_type: String(fd.get('field_type') ?? 'text').trim(),
-        is_required: fd.get('is_required') === 'on',
-        config_json: Object.keys(config).length ? config : undefined,
-      });
-      onMessage('Campo añadido');
-      refresh();
-    } catch (err) {
-      onMessage(settingsErrorMessage(err, 'No se pudo añadir el campo.'));
-    }
-  }
-
-  return (
-    <section className="settings-stack">
-      <h2>Plantillas y campos</h2>
-      <form className="settings-form settings-form--grid" onSubmit={(e) => void addTpl(e)}>
-        <select name="department_id" required className="chat-input">
-          <option value="">Departamento…</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <input name="name" placeholder="Nombre plantilla" required className="chat-input" />
-        <input
-          name="usage_type"
-          placeholder="Tipo de uso (p. ej. ticket_create)"
-          className="chat-input"
-          defaultValue="ticket_create"
-        />
-        <button type="submit" className="settings-btn">
-          Crear plantilla
-        </button>
-      </form>
-      {rows.map((tpl) => (
-        <div key={tpl.id} className="settings-card">
-          <div className="settings-card-head">
-            <strong>{tpl.name}</strong>
-            <span className="settings-muted"> {tpl.usageType}</span>
-            <button
-              type="button"
-              className="settings-btn settings-btn--small"
-              onClick={() =>
-                void adminUpdateTemplate(tpl.id, { is_active: !tpl.isActive })
-                  .then(() => refresh())
-                  .catch((err) =>
-                    onMessage(settingsErrorMessage(err, 'No se pudo actualizar la plantilla.')),
-                  )
-              }
-            >
-              {tpl.isActive ? 'Desactivar' : 'Activar'}
-            </button>
-          </div>
-          <ul className="settings-list">
-            {tpl.fields.map((f) => (
-              <li key={f.id}>
-                <code>{f.fieldKey}</code> — {f.fieldLabel} ({f.fieldType})
-                <button
-                  type="button"
-                  className="settings-btn settings-btn--small settings-btn--danger"
-                  onClick={() =>
-                    void adminDeleteTemplateField(f.id)
-                      .then(() => refresh())
-                      .catch((err) =>
-                        onMessage(settingsErrorMessage(err, 'No se pudo eliminar el campo.')),
-                      )
-                  }
-                >
-                  Eliminar
-                </button>
-              </li>
-            ))}
-          </ul>
-          <form className="settings-form settings-form--grid" onSubmit={(e) => void addField(e, tpl.id)}>
-            <input name="field_key" placeholder="field_key" required className="chat-input" />
-            <input name="field_label" placeholder="Etiqueta" required className="chat-input" />
-            <input name="field_type" placeholder="tipo (text, number…)" className="chat-input" defaultValue="text" />
-            <input name="config_json" placeholder='config JSON opcional e.g. {"max":10}' className="chat-input" />
-            <label className="settings-check">
-              <input name="is_required" type="checkbox" /> Obligatorio
-            </label>
-            <button type="submit" className="settings-btn">
-              Añadir campo
-            </button>
-          </form>
-        </div>
-      ))}
-    </section>
+    </SettingsSectionCard>
   );
 }
 
 const AUTH_TYPES = ['none', 'bearer', 'api_key', 'basic'] as const;
+
 
 function SettingsIntegrations({
   onMessage,
@@ -1345,6 +755,7 @@ function SettingsIntegrations({
     exportText: string;
   } | null>(null);
   const [probeBusy, setProbeBusy] = useState(false);
+  const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     onMessage(null);
@@ -1382,6 +793,22 @@ function SettingsIntegrations({
     setApiKeyValue('');
     setBasicUser('');
     setBasicPass('');
+  }
+
+  async function toggleIntegrationActive(r: AdminIntegrationRow) {
+    if (togglingActiveId) return;
+    setTogglingActiveId(r.id);
+    onMessage(null);
+    const nextActive = !r.is_active;
+    try {
+      const updated = await adminUpdateIntegration(r.id, { is_active: nextActive });
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, is_active: updated.is_active } : x)));
+      onMessage(updated.is_active ? `«${r.name}» activada` : `«${r.name}» desactivada`);
+    } catch (err) {
+      onMessage(settingsErrorMessage(err, 'No se pudo cambiar el estado de la integración.'));
+    } finally {
+      setTogglingActiveId(null);
+    }
   }
 
   function startEdit(r: AdminIntegrationRow) {
@@ -1814,7 +1241,32 @@ function SettingsIntegrations({
                     <td>{r.name}</td>
                     <td style={{ wordBreak: 'break-all', maxWidth: '14rem' }}>{r.base_url}</td>
                     <td>{r.auth_type}</td>
-                    <td>{r.is_active ? 'Sí' : 'No'}</td>
+                    <td>
+                      <div className="settings-integration-active-cell">
+                        <label
+                          className="settings-switch settings-switch--table"
+                          title={r.is_active ? 'Desactivar integración' : 'Activar integración'}
+                        >
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            className="settings-switch-input"
+                            checked={r.is_active}
+                            disabled={togglingActiveId === r.id}
+                            aria-label={
+                              r.is_active
+                                ? `Desactivar integración ${r.name}`
+                                : `Activar integración ${r.name}`
+                            }
+                            onChange={() => void toggleIntegrationActive(r)}
+                          />
+                          <span className="settings-switch-visual" aria-hidden />
+                        </label>
+                        <span className="settings-integration-active-cell__label">
+                          {togglingActiveId === r.id ? '…' : r.is_active ? 'Sí' : 'No'}
+                        </span>
+                      </div>
+                    </td>
                     <td>
                       <button type="button" className="settings-btn settings-btn--small" onClick={() => startEdit(r)}>
                         Editar
@@ -1924,156 +1376,42 @@ function SettingsIntegrations({
   );
 }
 
+type SettingsUsersSubTab = 'system' | 'gth';
+
 function SettingsUsers({ onMessage }: { onMessage: (s: string | null) => void }) {
-  const [page, setPage] = useState(0);
-  const take = 30;
-  const [data, setData] = useState<{ items: AdminUserRow[]; total: number } | null>(null);
-  const [selected, setSelected] = useState<AdminUserRow | null>(null);
-  const [deptRoles, setDeptRoles] = useState<DepartmentRoleEntry[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const subTab: SettingsUsersSubTab =
+    searchParams.get('users_sub') === 'gth' ? 'gth' : 'system';
 
-  const refresh = useCallback(() => {
-    onMessage(null);
-    void adminListUsers({ skip: page * take, take }).then(setData);
-  }, [onMessage, page]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (selected) {
-      setDeptRoles(selected.department_roles.map((r) => ({ ...r })));
-    } else {
-      setDeptRoles([]);
-    }
-  }, [selected]);
-
-  async function saveGlobalRole() {
-    if (!selected) return;
-    const sel = document.getElementById('user-global-role') as HTMLSelectElement | null;
-    const v = sel?.value ?? '';
-    const gr = v === '' ? null : (v as 'admin' | 'auditor');
-    try {
-      await adminUpdateUserGlobalRole(selected.id, gr);
-      onMessage('Rol global actualizado');
-      refresh();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  async function saveDeptRoles() {
-    if (!selected) return;
-    try {
-      await adminSetUserDepartmentRoles(selected.id, deptRoles);
-      onMessage('Roles por departamento guardados');
-      refresh();
-    } catch (err) {
-      onMessage(err instanceof ApiError ? err.message : 'Error');
-    }
-  }
-
-  function updateDeptRow(i: number, field: 'department_id' | 'role', value: string) {
-    setDeptRoles((prev) => {
-      const next = [...prev];
-      next[i] = { ...next[i], [field]: value };
-      return next;
-    });
+  function setSubTab(id: SettingsUsersSubTab) {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'users');
+    if (id === 'gth') next.set('users_sub', 'gth');
+    else next.delete('users_sub');
+    setSearchParams(next, { replace: true });
   }
 
   return (
-    <section className="settings-stack">
-      <h2>Usuarios y roles</h2>
-      <div className="settings-users-layout">
-        <div>
-          <button type="button" className="settings-btn settings-btn--small" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page <= 0}>
-            Anterior
-          </button>
-          <button
-            type="button"
-            className="settings-btn settings-btn--small"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={!data || (page + 1) * take >= data.total}
-          >
-            Siguiente
-          </button>
-          {data ? (
-            <span className="settings-muted">
-              {' '}
-              {data.total} usuarios (página {page + 1})
-            </span>
-          ) : null}
-          <table className="settings-table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>ID</th>
-                <th>Rol global</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.items.map((u) => (
-                <tr
-                  key={u.id}
-                  className={selected?.id === u.id ? 'settings-row-active' : undefined}
-                  onClick={() => setSelected(u)}
-                  onKeyDown={(e) => e.key === 'Enter' && setSelected(u)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <td>{u.name}</td>
-                  <td>{u.employee_id}</td>
-                  <td>{u.global_role ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="settings-card">
-          {selected ? (
-            <>
-              <h3>{selected.name}</h3>
-              <p className="settings-muted">{selected.email ?? 'sin correo'}</p>
-              <label className="settings-field">
-                Rol global
-                <select id="user-global-role" className="chat-input" defaultValue={selected.global_role ?? ''}>
-                  <option value="">(ninguno)</option>
-                  <option value="admin">admin</option>
-                  <option value="auditor">auditor</option>
-                </select>
-              </label>
-              <button type="button" className="settings-btn" onClick={() => void saveGlobalRole()}>
-                Guardar rol global
-              </button>
-              <h4>Roles por departamento</h4>
-              {deptRoles.map((r, i) => (
-                <div key={i} className="settings-form settings-form--grid">
-                  <input
-                    className="chat-input"
-                    value={r.department_id}
-                    onChange={(e) => updateDeptRow(i, 'department_id', e.target.value)}
-                    placeholder="department_id (UUID)"
-                  />
-                  <input
-                    className="chat-input"
-                    value={r.role}
-                    onChange={(e) => updateDeptRow(i, 'role', e.target.value)}
-                    placeholder="supervisor | tecnico_area"
-                  />
-                </div>
-              ))}
-              <button type="button" className="settings-btn settings-btn--small" onClick={() => setDeptRoles((p) => [...p, { department_id: '', role: 'tecnico_area' }])}>
-                Añadir fila
-              </button>
-              <button type="button" className="settings-btn" onClick={() => void saveDeptRoles()}>
-                Guardar roles departamento
-              </button>
-            </>
-          ) : (
-            <p className="settings-muted">Selecciona un usuario en la tabla.</p>
-          )}
-        </div>
-      </div>
+    <section
+      className={`settings-stack settings-users${
+        subTab === 'gth' ? ' settings-users--gth' : ' settings-users--system'
+      }`}
+    >
+      <SettingsSubTabs
+        tabs={[
+          { id: 'system' as const, label: 'Usuarios del sistema' },
+          { id: 'gth' as const, label: 'GTH' },
+        ]}
+        active={subTab}
+        onChange={setSubTab}
+        ariaLabel="Secciones de usuarios"
+        className="settings-tab-row settings-users-subtabs"
+      />
+      {subTab === 'system' ? (
+        <SettingsSystemUsersPane onMessage={onMessage} />
+      ) : (
+        <SettingsUsersGthPane />
+      )}
     </section>
   );
 }

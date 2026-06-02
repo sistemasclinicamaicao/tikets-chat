@@ -7,15 +7,12 @@ import {
   Param,
   Post,
   Query,
-  Res,
   StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
-import type { Readable } from 'stream';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { AddGroupMemberDto } from './dto/add-group-member.dto';
@@ -31,8 +28,11 @@ function maxChatAttachmentUploadBytes() {
   return maxMb * 1024 * 1024;
 }
 
-function contentDispositionFileName(name: string) {
-  return name.replace(/["\r\n]/g, '_');
+function inlineContentDisposition(fileName: string) {
+  const trimmed = fileName.trim() || 'file';
+  const asciiFallback = trimmed.replace(/["\r\n]/g, '_').replace(/[^\x20-\x7E]/g, '_') || 'file';
+  const encoded = encodeURIComponent(trimmed).replace(/['()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`).replace(/\*/g, '%2A');
+  return `inline; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 @Controller('chat')
@@ -113,13 +113,13 @@ export class ChatController {
   async getAttachmentContent(
     @Param('attachmentId') attachmentId: string,
     @CurrentUser() user: { userId: string },
-    @Res({ passthrough: true }) res: Response,
   ) {
-    const { row, object } = await this.chatService.getAttachmentContent(user.userId, attachmentId);
-    res.setHeader('Content-Type', row.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Length', String(row.sizeBytes));
-    res.setHeader('Content-Disposition', `inline; filename="${contentDispositionFileName(row.originalName)}"`);
-    return new StreamableFile(object.Body as Readable);
+    const { row, buffer } = await this.chatService.getAttachmentContent(user.userId, attachmentId);
+    return new StreamableFile(buffer, {
+      type: row.mimeType || 'application/octet-stream',
+      disposition: inlineContentDisposition(row.originalName),
+      length: buffer.length,
+    });
   }
 
   @Post('dm/:userId')

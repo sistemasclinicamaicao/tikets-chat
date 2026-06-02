@@ -21,6 +21,7 @@ export const GLOBAL_ROLES = {
 } as const;
 
 export const DEPARTMENT_ROLES = {
+  DEPT_ADMIN: 'dept_admin',
   SUPERVISOR: 'supervisor',
   TECNICO_AREA: 'tecnico_area',
 } as const;

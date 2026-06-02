@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { departmentMantenimientosPath } from '../../departments/departmentExperience';
 
 type Props = {
   departmentId: string;
@@ -73,7 +74,7 @@ export function InventoryToolbar({
             Registrar equipo
           </button>
         ) : null}
-        <Link className="inventory-btn inventory-btn--cta" to={`/inventario/${departmentId}/mantenimientos`}>
+        <Link className="inventory-btn inventory-btn--cta" to={departmentMantenimientosPath(departmentId)}>
           Registrar mantenimiento
         </Link>
       </div>

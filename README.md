@@ -51,7 +51,11 @@ Monorepo: API NestJS (Prisma + PostgreSQL) y aplicación web React (Vite).
 
 ## Desarrollo local
 
-**Windows (recomendado):** doble clic en [`iniciar-desarrollo-local.bat`](iniciar-desarrollo-local.bat) en la raíz del repo. Levanta Postgres (Docker), API (`:3030`) y web (`:5173`), espera el health del API y abre el login. Si el puerto 5173 o 3030 ya está en uso, no duplica procesos; para reiniciar en limpio:
+**Windows (recomendado):** doble clic en [`INICIAR-LOCAL.bat`](INICIAR-LOCAL.bat) en la raíz del repo (también [`iniciar-desarrollo-local.bat`](iniciar-desarrollo-local.bat)). Levanta Postgres (Docker), instala dependencias si faltan, API (`:3030`) y web (`:5173`), espera el health del API y abre el login. Si el puerto 5173 o 3030 ya está en uso, no duplica procesos; para reiniciar en limpio:
+
+```bat
+INICIAR-LOCAL.bat --forzar
+```
 
 ```powershell
 .\scripts\iniciar-desarrollo-local.ps1 -ForzarPuertos

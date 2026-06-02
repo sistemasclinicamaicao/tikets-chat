@@ -5,6 +5,7 @@ export const TICKET_REALTIME_EVENTS = [
   'ticket:status_changed',
   'ticket:closed',
   'ticket:comment',
+  'ticket:attachment_added',
 ] as const;
 
 export type TicketRealtimeEventName = (typeof TICKET_REALTIME_EVENTS)[number];

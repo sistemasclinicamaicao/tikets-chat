@@ -34,6 +34,9 @@ model User {
   ticketAssignmentsMade TicketAssignment[] @relation("AssignmentBy")
   ticketAssignmentsReceived TicketAssignment[] @relation("AssignmentTo")
   hojaDeVidaSynced HojaDeVida[] @relation("HojaDeVidaSyncedBy")
+  gthDirectorySynced GthDirectory[] @relation("GthDirectorySyncedBy")
+  gthSyncRuns        GthSyncRun[]   @relation("GthSyncRunBy")
+  gthComunicacionesPhotosUploaded GthComunicacionesRecord[] @relation("GthComunicacionesPhotoUploadedBy")
   notificationLogs NotificationLog[]
   pushTokens         UserPushToken[]
 
@@ -120,6 +123,100 @@ model HojaDeVida {
   @@unique([departmentId, externalRowKey])
   @@index([departmentId, externalIdPc])
   @@map("hoja_de_vida")
+}
+
+/// Copia local del directorio de personal GTH importado desde CONEXION-GTH (tabla `gth_directory`).
+model GthDirectory {
+  id              String   @id @default(cuid())
+  externalRowKey  String   @unique @map("external_row_key")
+  documentId      String?  @map("document_id")
+  payload         Json     @map("payload")
+  integrationName String?  @map("integration_name")
+  syncedAt        DateTime @default(now()) @map("synced_at")
+  firstSeenAt     DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+  syncedByUserId  String?  @map("synced_by_user_id")
+  syncedBy        User?    @relation("GthDirectorySyncedBy", fields: [syncedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([syncedAt])
+  @@index([firstSeenAt])
+  @@map("gth_directory")
+}
+
+/// Ejecución de sincronización GTH (auditoría y altas detectadas).
+model GthSyncRun {
+  id              String            @id @default(cuid())
+  syncedAt        DateTime          @default(now()) @map("synced_at")
+  syncedByUserId  String?           @map("synced_by_user_id")
+  imported        Int               @default(0)
+  addedCount      Int               @default(0) @map("added_count")
+  removedCount    Int               @default(0) @map("removed_count")
+  availableFields Json?             @map("available_fields")
+  syncedBy        User?             @relation("GthSyncRunBy", fields: [syncedByUserId], references: [id], onDelete: SetNull)
+  additions       GthSyncAddition[]
+
+  @@index([syncedAt])
+  @@map("gth_sync_runs")
+}
+
+/// Alta detectada en una sincronización GTH (gancho para tickets futuros).
+model GthSyncAddition {
+  id                   String                  @id @default(cuid())
+  syncRunId            String                  @map("sync_run_id")
+  documentId           String?                 @map("document_id")
+  externalRowKey       String                  @map("external_row_key")
+  payload              Json                    @map("payload")
+  syncRun              GthSyncRun              @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  comunicacionesTicket GthComunicacionesTicket?
+
+  @@unique([syncRunId, externalRowKey])
+  @@index([syncRunId])
+  @@index([documentId])
+  @@map("gth_sync_additions")
+}
+
+/// Ticket de onboarding GTH creado en Comunicaciones por alta en directorio.
+model GthComunicacionesTicket {
+  id                String           @id @default(cuid())
+  ticketId          String           @unique @map("ticket_id")
+  externalRowKey    String           @unique @map("external_row_key")
+  documentId        String?          @map("document_id")
+  fullName          String           @map("full_name")
+  cargo             String           @default("") @map("cargo")
+  gthSyncAdditionId String?          @unique @map("gth_sync_addition_id")
+  syncRunId         String?          @map("sync_run_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  ticket            Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  gthSyncAddition   GthSyncAddition? @relation(fields: [gthSyncAdditionId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([syncRunId])
+  @@map("gth_comunicaciones_tickets")
+}
+
+/// Registro GTH gestionado por Comunicaciones (sin ticket obligatorio).
+model GthComunicacionesRecord {
+  id                    String      @id @default(cuid())
+  externalRowKey        String      @unique @map("external_row_key")
+  documentId            String?     @map("document_id")
+  fullName              String      @map("full_name")
+  cargo                 String      @default("") @map("cargo")
+  payload               Json        @map("payload")
+  isActive              Boolean     @default(true) @map("is_active")
+  photoAttachmentId     String?     @unique @map("photo_attachment_id")
+  photoUploadedAt       DateTime?   @map("photo_uploaded_at")
+  photoUploadedByUserId String?     @map("photo_uploaded_by_user_id")
+  lastSyncedAt          DateTime    @default(now()) @map("last_synced_at")
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+  photoAttachment       Attachment? @relation("GthComunicacionesRecordPhoto", fields: [photoAttachmentId], references: [id], onDelete: SetNull)
+  photoUploadedBy       User?       @relation("GthComunicacionesPhotoUploadedBy", fields: [photoUploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([isActive])
+  @@index([lastSyncedAt])
+  @@map("gth_comunicaciones_records")
 }
 
 /// Catálogo operativo (dependencia / unidad) importado del legado MySQL, por departamento de inventario.
@@ -253,13 +350,14 @@ model Asset {
 }
 
 model Attachment {
-  id                 String             @id @default(uuid())
-  storageKey         String             @map("storage_key")
-  originalName       String             @map("original_name")
-  mimeType           String             @map("mime_type")
-  sizeBytes          Int                @map("size_bytes")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  ticketAttachments  TicketAttachment[]
+  id                        String                     @id @default(uuid())
+  storageKey                String                     @map("storage_key")
+  originalName              String                     @map("original_name")
+  mimeType                  String                     @map("mime_type")
+  sizeBytes                 Int                        @map("size_bytes")
+  createdAt                 DateTime                   @default(now()) @map("created_at")
+  ticketAttachments         TicketAttachment[]
+  gthComunicacionesRecordPhoto GthComunicacionesRecord? @relation("GthComunicacionesRecordPhoto")
 
   @@map("attachments")
 }
@@ -305,6 +403,7 @@ model Ticket {
   formValues  TicketFormValue[]
   assignments TicketAssignment[]
   chatChannel ChatChannel?
+  gthComunicacionesTicket GthComunicacionesTicket?
 
   @@map("tickets")
 }

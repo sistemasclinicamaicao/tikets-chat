@@ -36,7 +36,7 @@ export class NotificationsService {
       const roleRows = await this.prisma.userDepartmentRole.findMany({
         where: {
           departmentId,
-          role: { in: ['supervisor', 'tecnico_area'] },
+          role: { in: ['dept_admin', 'supervisor', 'tecnico_area'] },
         },
         select: { userId: true },
       });

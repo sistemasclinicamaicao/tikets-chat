@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -337,8 +337,65 @@ export class StorageService {
     );
   }
 
-  async getObject(key: string) {
-    return this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+  private objectFetchBudgetMs(): number {
+    return this.connectTimeoutMs + this.socketTimeoutMs * this.maxAttempts + 1500;
+  }
+
+  async getObject(key: string, abortSignal?: AbortSignal) {
+    return this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      abortSignal ? { abortSignal } : undefined,
+    );
+  }
+
+  async getObjectBuffer(key: string): Promise<Buffer> {
+    const controller = new AbortController();
+    const budgetMs = this.objectFetchBudgetMs();
+    const timer = setTimeout(() => controller.abort(), budgetMs);
+    try {
+      return await this.readObjectBuffer(key, controller.signal);
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      if (error instanceof ServiceUnavailableException) throw error;
+      const err = error as { name?: string; Code?: string; message?: string; code?: string };
+      if (controller.signal.aborted || err?.name === 'AbortError') {
+        this.logger.warn(
+          `Storage getObjectBuffer timeout after ${budgetMs}ms (key=${key.slice(0, 80)})`,
+        );
+        throw new ServiceUnavailableException('Storage timeout');
+      }
+      if (err?.name === 'NoSuchKey' || err?.Code === 'NoSuchKey') {
+        throw new NotFoundException('Attachment file not found in storage');
+      }
+      this.logger.error(
+        `Storage getObjectBuffer failed ${JSON.stringify({
+          endpoint: this.endpoint,
+          bucket: this.bucket,
+          keyPrefix: key.slice(0, 80),
+          errorName: err?.name ?? 'Error',
+          errorMessage: err?.message ?? String(error),
+          errorCode: err?.Code ?? err?.code ?? null,
+        })}`,
+      );
+      throw new ServiceUnavailableException('Storage unavailable');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async readObjectBuffer(key: string, abortSignal: AbortSignal): Promise<Buffer> {
+    const object = await this.getObject(key, abortSignal);
+    if (!object.Body) {
+      throw new NotFoundException('Attachment file not found in storage');
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of object.Body as AsyncIterable<Uint8Array | Buffer | string>) {
+      if (abortSignal.aborted) {
+        throw new ServiceUnavailableException('Storage timeout');
+      }
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
   }
 
   /** Pre-signed URL for a ticket `Attachment` row (table `attachments`). */

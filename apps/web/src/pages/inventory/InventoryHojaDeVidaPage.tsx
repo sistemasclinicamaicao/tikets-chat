@@ -29,6 +29,7 @@ import { InventoryPcApiShell } from './components/InventoryPcApiShell';
 import { InventoryPcSubnav } from './components/InventoryPcSubnav';
 import { InventorySubnav } from './components/InventorySubnav';
 import { InventoryToolbar } from './components/InventoryToolbar';
+import { DEPARTMENTS_BASE } from '../departments/departmentExperience';
 import {
   CATEGORY_TITLE,
   SLUG_TO_CATEGORY,
@@ -415,7 +416,7 @@ export function InventoryHojaDeVidaPage() {
           No se pudo cargar su perfil (sesión expirada o sin autorización). Vuelva a{' '}
           <Link to="/login">iniciar sesión</Link>.
         </p>
-        <Link to="/inventario">Volver a inventario</Link>
+        <Link to={DEPARTMENTS_BASE}>Volver a departamentos</Link>
       </section>
     );
   }
@@ -423,8 +424,8 @@ export function InventoryHojaDeVidaPage() {
   if (!allowedHere) {
     return (
       <section className="module-card">
-        <p>No tiene acceso a inventario de este departamento.</p>
-        <Link to="/inventario">Volver</Link>
+        <p>No tiene acceso a este departamento.</p>
+        <Link to={DEPARTMENTS_BASE}>Volver</Link>
       </section>
     );
   }

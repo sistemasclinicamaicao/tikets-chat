@@ -19,16 +19,16 @@ import {
 } from '../lib/api';
 import { authGet, authRemove, authSet } from '../lib/authStorage';
 import { setupNativePushWhenAuthed } from '../lib/nativePush';
+import { ClinicaDefaultPhotoImg } from '../components/ClinicaDefaultPhotoImg';
+import { initialsFromName } from '../components/MessengerLoginAvatar';
+import { usePresentationAvatarPhoto } from '../hooks/usePresentationAvatarPhoto';
 
 type ProtectedLayoutProps = {
   onLogout: () => void;
 };
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+function isDepartmentsModulePath(pathname: string): boolean {
+  return pathname.startsWith('/departamentos') || pathname.startsWith('/inventario');
 }
 
 function profileFromStorage(): CurrentUserProfile | null {
@@ -55,6 +55,9 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const userName = authGet('user_name') ?? 'Usuario';
+  const userEmployeeId = authGet('user_employee_id') ?? '';
+  const [hasPresentationAvatar, setHasPresentationAvatar] = useState<boolean | null>(null);
+  const sessionAvatarPhoto = usePresentationAvatarPhoto(userEmployeeId, hasPresentationAvatar);
   const sessionDeviceName = authGet('session_device_name')?.trim() ?? '';
   const [userRoleLabel, setUserRoleLabel] = useState(formatSessionRoleLabel);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(() => isStoredGlobalAdmin());
@@ -179,6 +182,7 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
       const profile = await getCurrentUserProfile();
       persistUserRolesFromProfile(profile);
       setIsGlobalAdmin(isGlobalAdminRole(profile.global_role));
+      setHasPresentationAvatar(profile.has_presentation_avatar ?? false);
       setEmployeeProfile(profile);
       authSet('user_employee_id', profile.employee_id);
       if (profile.email) authSet('user_email', profile.email);
@@ -401,12 +405,12 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
             ) : null}
             {showInventoryNav ? (
               <Link
-                className={location.pathname.startsWith('/inventario') ? 'active' : ''}
-                to="/inventario"
+                className={isDepartmentsModulePath(location.pathname) ? 'active' : ''}
+                to="/departamentos"
                 onClick={() => closeMobileNav()}
               >
                 <i className="ti ti-box" aria-hidden="true" />
-                <span>Inventario</span>
+                <span>Departamentos</span>
               </Link>
             ) : null}
           </nav>
@@ -437,8 +441,29 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
                 title="Ver datos del empleado"
               >
               <span className="workspace-nav-panel__avatar-wrap">
-                <span className="workspace-nav-panel__avatar" aria-hidden="true">
-                  {getInitials(userName)}
+                <span
+                  className={`workspace-nav-panel__avatar${
+                    sessionAvatarPhoto || userEmployeeId
+                      ? ' workspace-nav-panel__avatar--photo'
+                      : ''
+                  }${
+                    !sessionAvatarPhoto && userEmployeeId
+                      ? ' workspace-nav-panel__avatar--institutional'
+                      : ''
+                  }`}
+                  aria-hidden="true"
+                >
+                  {sessionAvatarPhoto ? (
+                    <img
+                      src={sessionAvatarPhoto}
+                      alt=""
+                      className="workspace-nav-panel__avatar-img"
+                    />
+                  ) : userEmployeeId ? (
+                    <ClinicaDefaultPhotoImg className="workspace-nav-panel__avatar-img workspace-nav-panel__avatar-img--logo" />
+                  ) : (
+                    initialsFromName(userName)
+                  )}
                 </span>
                 <span
                   className="presence-dot workspace-nav-panel__presence-dot"
@@ -447,7 +472,9 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
               </span>
               <span className="workspace-nav-panel__session-details">
                 <span className="workspace-nav-panel__session-label">Sesión activa</span>
-                <span className="workspace-nav-panel__session-name">{userName}</span>
+                <span className="workspace-nav-panel__session-name" title={userName}>
+                  {userName}
+                </span>
                 <span className="workspace-nav-panel__session-role">{userRoleLabel}</span>
                 {sessionDeviceName ? (
                   <span className="workspace-nav-panel__session-device" title="Equipo conectado">
@@ -481,8 +508,8 @@ export function ProtectedLayout({ onLogout }: ProtectedLayoutProps) {
                     ? 'Tickets'
                     : location.pathname.startsWith('/settings')
                       ? 'Configuración'
-                      : location.pathname.startsWith('/inventario')
-                        ? 'Inventario'
+                      : isDepartmentsModulePath(location.pathname)
+                        ? 'Departamentos'
                         : 'Inicio'}
               </span>
               <button

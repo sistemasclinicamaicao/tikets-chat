@@ -16,6 +16,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SlaModule } from './modules/sla/sla.module';
 import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { DepartmentUsersModule } from './modules/department-users/department-users.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
     TicketsModule,
     ChatModule,
     InventoryModule,
+    DepartmentUsersModule,
   ],
   controllers: [RootController, HealthController],
 })

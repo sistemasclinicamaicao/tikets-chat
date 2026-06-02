@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AdminGthComunicacionesRecordsService } from '../admin/admin-gth-comunicaciones-records.service';
+import { GthUserSyncService } from '../admin/gth-user-sync.service';
 import { MailService } from '../mail/mail.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
@@ -33,6 +35,8 @@ export class AuthService {
     private readonly auditLog: AuditLogService,
     private readonly config: ConfigService,
     private readonly pushNotifications: PushNotificationsService,
+    private readonly gthComunicacionesRecords: AdminGthComunicacionesRecordsService,
+    private readonly gthUserSync: GthUserSyncService,
   ) {}
 
   private maskEmail(email: string) {
@@ -102,6 +106,10 @@ export class AuthService {
       },
     });
 
+    const has_presentation_avatar = await this.gthComunicacionesRecords.hasPhotoByEmployeeId(
+      user.employeeId,
+    );
+
     return {
       ...tokens,
       device_name: deviceName ?? null,
@@ -115,15 +123,13 @@ export class AuthService {
           department_id: r.departmentId,
           role: r.role,
         })),
+        has_presentation_avatar,
       },
     };
   }
 
   async requestOtp(dto: RequestOtpDto) {
-    const user = await this.prisma.user.findUnique({ where: { employeeId: dto.employee_id } });
-    if (!user) {
-      throw new NotFoundException('USER_NOT_FOUND');
-    }
+    const user = await this.gthUserSync.resolveUserForLogin(dto.employee_id);
 
     if (this.isOtpBypassEmployee(user.employeeId)) {
       const code = this.getOtpBypassVerifyCode();
@@ -154,8 +160,9 @@ export class AuthService {
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
+    const resolved = await this.gthUserSync.resolveUserForLogin(dto.employee_id);
     const user = await this.prisma.user.findUnique({
-      where: { employeeId: dto.employee_id },
+      where: { id: resolved.id },
       select: {
         id: true,
         employeeId: true,
@@ -194,6 +201,43 @@ export class AuthService {
     return { success: true };
   }
 
+  /** Comprueba si hay foto GTH para avatar de login (sin descargar storage). */
+  async getLoginAvatarAvailable(employeeId: string): Promise<boolean> {
+    const trimmed = employeeId.trim();
+    if (!trimmed) return false;
+
+    const user = await this.prisma.user.findUnique({
+      where: { employeeId: trimmed },
+      select: { id: true },
+    });
+    if (!user) return false;
+
+    return this.gthComunicacionesRecords.hasPhotoByEmployeeId(trimmed);
+  }
+
+  /** Avatar de login desde carta de presentación GTH (Comunicaciones). Solo usuarios registrados. */
+  async getLoginAvatarContent(employeeId: string) {
+    const trimmed = employeeId.trim();
+    if (!trimmed) {
+      throw new NotFoundException('AVATAR_NOT_FOUND');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { employeeId: trimmed },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new NotFoundException('AVATAR_NOT_FOUND');
+    }
+
+    const photo = await this.gthComunicacionesRecords.getPhotoContentByEmployeeId(trimmed);
+    if (!photo) {
+      throw new NotFoundException('AVATAR_NOT_FOUND');
+    }
+
+    return photo;
+  }
+
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -214,6 +258,9 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('USER_NOT_FOUND');
     }
+    const has_presentation_avatar = await this.gthComunicacionesRecords.hasPhotoByEmployeeId(
+      user.employeeId,
+    );
     return {
       id: user.id,
       employee_id: user.employeeId,
@@ -229,6 +276,7 @@ export class AuthService {
         department_id: r.departmentId,
         role: r.role,
       })),
+      has_presentation_avatar,
     };
   }
 

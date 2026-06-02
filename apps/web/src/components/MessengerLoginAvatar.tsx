@@ -1,6 +1,10 @@
+import { usePresentationAvatarPhoto } from '../hooks/usePresentationAvatarPhoto';
+import { CLINICA_DEFAULT_PHOTO_URL } from '../lib/clinicaDefaultPhoto';
+
 type MessengerLoginAvatarProps = {
   name: string;
   seed: string;
+  employeeId?: string;
   size?: 'lg' | 'sm';
   selected?: boolean;
   className?: string;
@@ -37,6 +41,7 @@ export function initialsFromName(name: string): string {
 export function MessengerLoginAvatar({
   name,
   seed,
+  employeeId,
   size = 'lg',
   selected = false,
   className = '',
@@ -44,17 +49,36 @@ export function MessengerLoginAvatar({
 }: MessengerLoginAvatarProps) {
   const initials = initialsFromName(name);
   const bg = avatarColorFor(seed);
+  const photoSrc = usePresentationAvatarPhoto(employeeId);
+  const hasEmployeeId = Boolean(employeeId?.trim());
+  const displaySrc = photoSrc ?? (hasEmployeeId ? CLINICA_DEFAULT_PHOTO_URL : null);
+  const isInstitutionalLogo = !photoSrc && hasEmployeeId;
+
+  const classNames = `messenger-login__avatar messenger-login__avatar--${size}${
+    selected ? ' messenger-login__avatar--selected' : ''
+  }${displaySrc ? ' messenger-login__avatar--photo' : ''}${
+    isInstitutionalLogo ? ' messenger-login__avatar--institutional' : ''
+  }${className ? ` ${className}` : ''}`;
 
   return (
     <span
-      className={`messenger-login__avatar messenger-login__avatar--${size}${
-        selected ? ' messenger-login__avatar--selected' : ''
-      }${className ? ` ${className}` : ''}`}
-      style={{ background: bg, color: '#fff' }}
+      className={classNames}
+      style={displaySrc ? undefined : { background: bg, color: '#fff' }}
       title={title ?? name}
       aria-hidden={title ? undefined : true}
     >
-      {initials}
+      {displaySrc ? (
+        <img
+          src={displaySrc}
+          alt=""
+          className={`messenger-login__avatar-img${
+            isInstitutionalLogo ? ' messenger-login__avatar-img--logo' : ''
+          }`}
+          aria-hidden="true"
+        />
+      ) : (
+        initials
+      )}
     </span>
   );
 }

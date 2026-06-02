@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ClinicaDefaultPhotoImg } from '../components/ClinicaDefaultPhotoImg';
 import { MessengerLoginAvatar } from '../components/MessengerLoginAvatar';
 import {
   API_BASE,
@@ -136,7 +137,13 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       setEmployeeName(result.employee_name);
     } catch (err) {
       if (err instanceof ApiError && (err.message.includes('USER_NOT_FOUND') || err.status === 404)) {
-        setError('No encontramos ese usuario. Verifica cédula/documento o employee_id.');
+        setError(
+          'No encontramos ese usuario en el sistema. Debe existir en Usuarios del sistema (sincronizado desde GTH en Configuración).',
+        );
+      } else if (err instanceof ApiError && err.message.includes('USER_INACTIVE')) {
+        setError('El usuario está inactivo en el directorio GTH. Contacte al administrador.');
+      } else if (err instanceof ApiError && err.message.includes('USER_WITHOUT_EMAIL')) {
+        setError('El usuario no tiene correo registrado. Actualice los datos con una sincronización GTH.');
       } else {
         setError(describeApiError(err, 'No se pudo solicitar OTP'));
       }
@@ -208,15 +215,16 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
               <MessengerLoginAvatar
                 name={displayName}
                 seed={displaySeed}
+                employeeId={trimmedEmployeeId}
                 size="lg"
                 selected
               />
             ) : (
               <span
-                className="messenger-login__avatar messenger-login__avatar--lg messenger-login__avatar--placeholder"
+                className="messenger-login__avatar messenger-login__avatar--lg messenger-login__avatar--photo messenger-login__avatar--institutional"
                 aria-hidden
               >
-                <i className="ti ti-user" aria-hidden="true" />
+                <ClinicaDefaultPhotoImg className="messenger-login__avatar-img messenger-login__avatar-img--logo" />
               </span>
             )}
 

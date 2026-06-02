@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { AdminModule } from '../admin/admin.module';
 import { MailModule } from '../mail/mail.module';
 import { PushModule } from '../push/push.module';
 import { AuthController } from './auth.controller';
@@ -13,6 +14,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   imports: [
     PassportModule,
     JwtModule.register({}),
+    AdminModule,
     MailModule,
     PushModule,
   ],

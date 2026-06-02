@@ -607,6 +607,24 @@ export class ChatService {
     });
   }
 
+  /** Tickets Alta GTH de Comunicaciones: gestionados en Departamentos, no en chat. */
+  private isGthComunicacionesOnboardingTicket(
+    ticket:
+      | {
+          subject: string;
+          customDataJson: unknown;
+          gthComunicacionesTicket: { id: string } | null;
+        }
+      | null
+      | undefined,
+  ): boolean {
+    if (!ticket) return false;
+    if (ticket.gthComunicacionesTicket) return true;
+    if (ticket.subject.startsWith('Alta GTH:')) return true;
+    const data = ticket.customDataJson as Record<string, unknown> | null;
+    return data?.source === 'gth';
+  }
+
   async getChannels(userId: string) {
     await this.syncLegacyMemberships(userId);
 
@@ -628,13 +646,32 @@ export class ChatService {
 
     const channels = await this.prisma.chatChannel.findMany({
       where: { id: { in: memberships.map((membership) => membership.channel_id) } },
-      include: { ticket: { select: { id: true, subject: true } } },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            subject: true,
+            customDataJson: true,
+            status: { select: { isClosed: true } },
+            gthComunicacionesTicket: { select: { id: true } },
+          },
+        },
+      },
     });
 
     const combined = await Promise.all(
       memberships.map(async (membership) => {
         const channel = channels.find((item) => item.id === membership.channel_id);
         if (!channel) return null;
+        if (channel.channelType === 'ticket' && channel.ticket?.status?.isClosed) {
+          return null;
+        }
+        if (
+          channel.channelType === 'ticket' &&
+          this.isGthComunicacionesOnboardingTicket(channel.ticket)
+        ) {
+          return null;
+        }
         let channelName = channel.name ?? 'Canal';
         let dm_peer_user_id: string | null = null;
         if (channel.channelType === 'ticket' && channel.ticket?.subject) {
@@ -1054,7 +1091,7 @@ export class ChatService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const message = await this.prisma.$transaction(async (tx) => {
         const created = await tx.chatMessage.create({
           data: {
             channelId,
@@ -1076,6 +1113,8 @@ export class ChatService {
           include: this.messageInclude(),
         });
       });
+
+      return message;
     } catch (error) {
       this.logger.error(
         `Chat attachment DB transaction failed for channel ${channelId}; deleting uploaded blob ${key}`,
@@ -1149,7 +1188,7 @@ export class ChatService {
 
   async getAttachmentContent(userId: string, attachmentId: string) {
     const row = await this.getVisibleAttachmentForUserOrThrow(userId, attachmentId);
-    const object = await this.storage.getObject(row.storageKey);
-    return { row, object };
+    const buffer = await this.storage.getObjectBuffer(row.storageKey);
+    return { row, buffer };
   }
 }

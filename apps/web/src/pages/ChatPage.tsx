@@ -1,4 +1,5 @@
 import { FormEvent, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Socket } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../lib/api';
 import { authGet } from '../lib/authStorage';
 import { ensureRealtimeConnected, subscribeRealtimeStatus } from '../lib/chatRealtime';
+import { subscribeTicketRealtime } from '../lib/ticketRealtime';
 import {
   getChatSoundProfile,
   getDesktopNotificationPermission,
@@ -37,9 +39,43 @@ import {
   type ChatSoundProfile,
 } from '../lib/chatMessageAlerts';
 import type { ChatAttachment, ChatMessage, GroupMember } from '../lib/api';
-import { Theme, type EmojiClickData } from 'emoji-picker-react';
+import type { EmojiClickData } from 'emoji-picker-react';
+import { ChatChannelSection } from './chat/ChatChannelSection';
 
-const LazyEmojiPicker = lazy(() => import('emoji-picker-react'));
+const LazyEmojiPicker = lazy(() => import('./chat/ChatEmojiPicker'));
+
+const EMOJI_PICKER_WIDTH = 320;
+const EMOJI_PICKER_MIN_HEIGHT = 300;
+const EMOJI_PICKER_MAX_HEIGHT = 420;
+const EMOJI_PICKER_VIEWPORT_PAD = 12;
+
+type EmojiPopoverLayout = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+function computeEmojiPopoverLayout(anchor: DOMRect): EmojiPopoverLayout {
+  const width = Math.min(EMOJI_PICKER_WIDTH, window.innerWidth - EMOJI_PICKER_VIEWPORT_PAD * 2);
+  const spaceAbove = anchor.top - EMOJI_PICKER_VIEWPORT_PAD;
+  const spaceBelow = window.innerHeight - anchor.bottom - EMOJI_PICKER_VIEWPORT_PAD;
+  const preferAbove = spaceAbove >= spaceBelow;
+  const available = preferAbove ? spaceAbove : spaceBelow;
+  const height = Math.min(
+    EMOJI_PICKER_MAX_HEIGHT,
+    Math.max(EMOJI_PICKER_MIN_HEIGHT, available - 8),
+  );
+  const top = preferAbove
+    ? Math.max(EMOJI_PICKER_VIEWPORT_PAD, anchor.top - 8 - height)
+    : Math.min(window.innerHeight - EMOJI_PICKER_VIEWPORT_PAD - height, anchor.bottom + 8);
+  let left = anchor.left;
+  if (left + width > window.innerWidth - EMOJI_PICKER_VIEWPORT_PAD) {
+    left = window.innerWidth - EMOJI_PICKER_VIEWPORT_PAD - width;
+  }
+  left = Math.max(EMOJI_PICKER_VIEWPORT_PAD, left);
+  return { top, left, width, height };
+}
 
 const MESSAGES_PAGE_SIZE = 50;
 
@@ -94,6 +130,10 @@ function matchesPersonInviteSearch(user: ChatUser, queryRaw: string): boolean {
   }
   const words = nameNorm.split(/\s+/).filter(Boolean);
   return tokens.every((t) => words.some((w) => w.startsWith(t) || w.includes(t)) || nameNorm.includes(t));
+}
+
+function sumChannelUnread(list: Channel[]): number {
+  return list.reduce((acc, ch) => acc + (ch.unread_count > 0 ? ch.unread_count : 0), 0);
 }
 
 function sortChannelsByActivity(list: Channel[]): Channel[] {
@@ -448,7 +488,7 @@ function MessageActionMenu({
           <li role="none">
             <button
               type="button"
-              className="chat-channel-menu__item"
+              className="chat-message-menu__item"
               role="menuitem"
               onClick={() => {
                 closeMenu();
@@ -463,7 +503,7 @@ function MessageActionMenu({
           <li role="none">
             <button
               type="button"
-              className="chat-channel-menu__item"
+              className="chat-message-menu__item"
               role="menuitem"
               onClick={() => {
                 closeMenu();
@@ -478,7 +518,7 @@ function MessageActionMenu({
           <li role="none">
             <button
               type="button"
-              className="chat-channel-menu__item"
+              className="chat-message-menu__item"
               role="menuitem"
               onClick={() => {
                 closeMenu();
@@ -832,6 +872,7 @@ export function ChatPage() {
   const composerSelStartRef = useRef(0);
   const composerSelEndRef = useRef(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [emojiPopoverLayout, setEmojiPopoverLayout] = useState<EmojiPopoverLayout | null>(null);
   const emojiPopoverRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const typingLastEmitRef = useRef(0);
@@ -1007,6 +1048,16 @@ export function ChatPage() {
     const data = await getChatChannels();
     setChannels(sortChannelsByActivity(data));
     emitSyncRooms();
+    const current = activeChannelIdRef.current;
+    if (current && !data.some((item) => item.id === current)) {
+      const next = data[0]?.id ?? null;
+      setActiveChannelId(next);
+      syncChannelInUrl(next);
+      if (!next) {
+        loadedChannelIdRef.current = '';
+        setMessages([]);
+      }
+    }
     if (!selectRequested) return;
     const requested = searchParams.get('channel');
     if (requested && data.some((item) => item.id === requested)) {
@@ -1354,6 +1405,15 @@ export function ChatPage() {
   }, [socket]);
 
   useEffect(() => {
+    if (!socket) return;
+    return subscribeTicketRealtime(socket, (event) => {
+      if (event === 'ticket:closed' || event === 'ticket:attachment_added') {
+        void loadChannels(false);
+      }
+    });
+  }, [socket]);
+
+  useEffect(() => {
     function onVisibility() {
       setNotifPermission(getDesktopNotificationPermission());
       if (document.visibilityState !== 'visible') return;
@@ -1506,6 +1566,25 @@ export function ChatPage() {
       if (nextUrl) URL.revokeObjectURL(nextUrl);
     };
   }, [previewAttachment]);
+
+  useLayoutEffect(() => {
+    if (!emojiPickerOpen) {
+      setEmojiPopoverLayout(null);
+      return;
+    }
+    function updateLayout() {
+      const btn = emojiButtonRef.current;
+      if (!btn) return;
+      setEmojiPopoverLayout(computeEmojiPopoverLayout(btn.getBoundingClientRect()));
+    }
+    updateLayout();
+    window.addEventListener('resize', updateLayout);
+    window.addEventListener('scroll', updateLayout, true);
+    return () => {
+      window.removeEventListener('resize', updateLayout);
+      window.removeEventListener('scroll', updateLayout, true);
+    };
+  }, [emojiPickerOpen]);
 
   useEffect(() => {
     if (!emojiPickerOpen) return;
@@ -2168,13 +2247,13 @@ export function ChatPage() {
         ) : null}
 
         <div className="chat-channel-groups">
-          <section className="chat-channel-group">
-            <div className="chat-channel-group__head">
-              <h3 className="chat-channel-group__label chat-channel-group__label--in-head">Tickets (prioridad)</h3>
-              <span className="chat-channel-group__count-badge" aria-label={`${ticketChannels.length} chats de ticket`}>
-                {ticketChannels.length}
-              </span>
-            </div>
+          <ChatChannelSection
+            title="Tickets (prioridad)"
+            storageKey="chat.sections.tickets"
+            count={ticketChannels.length}
+            unreadCount={sumChannelUnread(ticketChannels)}
+            defaultOpen
+          >
             {ticketChannels.length > 0 ? (
               <div className="chat-channel-list">
                 {ticketChannels.map((channel) => (
@@ -2194,37 +2273,46 @@ export function ChatPage() {
                   />
                 ))}
               </div>
-            ) : null}
-          </section>
+            ) : (
+              <p className="chat-empty-hint">Sin chats de ticket.</p>
+            )}
+          </ChatChannelSection>
 
-          <section className="chat-channel-group">
-            <h3 className="chat-channel-group__label">Mensajes directos (punto a punto)</h3>
-            {createGroupOpen ? (
-              <div className="chat-new-group">
-                <input
-                  ref={createGroupInputRef}
-                  className="chat-input chat-input--inline"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void onCreateGroup();
-                    }
-                  }}
-                  placeholder="Nombre del grupo…"
-                  maxLength={120}
-                  aria-label="Nombre del nuevo grupo"
-                />
-                <button
-                  type="button"
-                  className="chat-new-group__btn chat-new-group__btn--secondary"
-                  onClick={() => void onCreateGroup()}
-                >
-                  Crear
-                </button>
-              </div>
-            ) : null}
+          <ChatChannelSection
+            title="Mensajes directos (punto a punto)"
+            storageKey="chat.sections.dm"
+            count={dmChannels.length}
+            unreadCount={sumChannelUnread(dmChannels)}
+            defaultOpen
+            beforeList={
+              createGroupOpen ? (
+                <div className="chat-new-group">
+                  <input
+                    ref={createGroupInputRef}
+                    className="chat-input chat-input--inline"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void onCreateGroup();
+                      }
+                    }}
+                    placeholder="Nombre del grupo…"
+                    maxLength={120}
+                    aria-label="Nombre del nuevo grupo"
+                  />
+                  <button
+                    type="button"
+                    className="chat-new-group__btn chat-new-group__btn--secondary"
+                    onClick={() => void onCreateGroup()}
+                  >
+                    Crear
+                  </button>
+                </div>
+              ) : null
+            }
+          >
             <div className="chat-channel-list">
               {dmChannels.length === 0 ? (
                 <p className="chat-empty-hint">Sin conversaciones directas.</p>
@@ -2247,15 +2335,15 @@ export function ChatPage() {
                 ))
               )}
             </div>
-          </section>
+          </ChatChannelSection>
 
-          <section className="chat-channel-group">
-            <div className="chat-channel-group__head">
-              <h3 className="chat-channel-group__label chat-channel-group__label--in-head">Grupos</h3>
-              <span className="chat-channel-group__count-badge" aria-label={`${groupChannels.length} chats de grupo`}>
-                {groupChannels.length}
-              </span>
-            </div>
+          <ChatChannelSection
+            title="Grupos"
+            storageKey="chat.sections.groups"
+            count={groupChannels.length}
+            unreadCount={sumChannelUnread(groupChannels)}
+            defaultOpen={groupChannels.length > 0}
+          >
             <div className="chat-channel-list">
               {groupChannels.length === 0 ? (
                 <p className="chat-empty-hint">Sin conversaciones de grupo.</p>
@@ -2278,7 +2366,7 @@ export function ChatPage() {
                 ))
               )}
             </div>
-          </section>
+          </ChatChannelSection>
         </div>
       </aside>
 
@@ -2744,12 +2832,43 @@ export function ChatPage() {
           ) : (
             (() => {
               let lastDayIso: string | null = null;
+              const channelType = activeChannel?.channel_type;
+              const showAuthorInBubbles =
+                channelType === 'group' || channelType === 'ticket';
               return messages.map((message) => {
                 const mine = Boolean(currentUserId && String(message.user.id) === String(currentUserId));
                 const atts = message.attachments ?? [];
                 const showDateDivider =
                   !lastDayIso || !isSameLocalDay(lastDayIso, message.createdAt);
                 lastDayIso = message.createdAt;
+                const authorName = formatDisplayName(message.user.name);
+
+                if (message.messageType === 'nudge') {
+                  return (
+                    <div key={message.id} className="chat-message-group chat-message-group--system">
+                      {showDateDivider ? (
+                        <div className="chat-date-divider" role="separator">
+                          <span>{formatDateDividerLabel(message.createdAt)}</span>
+                        </div>
+                      ) : null}
+                      <div
+                        className={`chat-system-message ${mine ? 'chat-system-message--mine' : 'chat-system-message--theirs'}`}
+                        role="status"
+                      >
+                        <span className="chat-system-message__icon" aria-hidden="true">
+                          <i className="ti ti-bell" />
+                        </span>
+                        <span className="chat-system-message__text">
+                          {mine ? 'Enviaste un recordatorio' : `${authorName} te llamó la atención`}
+                        </span>
+                        <time className="chat-system-message__time" dateTime={message.createdAt}>
+                          {formatMessageTimeOnly(message.createdAt)}
+                        </time>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={message.id}
@@ -2763,53 +2882,65 @@ export function ChatPage() {
                     <div
                       className={`chat-message-row ${mine ? 'chat-message-row--mine' : 'chat-message-row--theirs'}`}
                     >
-                      <span
-                        className="chat-message-row__avatar"
-                        style={{
-                          background: mine
-                            ? 'var(--brand-accent)'
-                            : avatarColorFor(String(message.user.id)),
-                        }}
-                        title={formatDisplayName(message.user.name)}
-                        aria-label={formatDisplayName(message.user.name)}
-                      >
-                        {getNameInitials(message.user.name)}
-                      </span>
+                      {!mine ? (
+                        <span
+                          className="chat-message-row__avatar"
+                          style={{ background: avatarColorFor(String(message.user.id)) }}
+                          title={authorName}
+                          aria-label={authorName}
+                        >
+                          {getNameInitials(message.user.name)}
+                        </span>
+                      ) : null}
                       <article
                         className={mine ? 'chat-bubble chat-bubble--mine' : 'chat-bubble chat-bubble--theirs'}
                       >
-                      <header className="chat-bubble__head">
-                        <div className="chat-bubble__head-actions">
-                          <time className="chat-bubble__time" dateTime={message.createdAt}>
-                            {formatMessageTimeOnly(message.createdAt)}
-                          </time>
-                          <MessageActionMenu
-                            message={message}
-                            onCopyText={() => void copyMessageText(message)}
-                            onDownloadAttachments={() => void downloadMessageAttachments(message)}
-                            onForwardAttachments={() => openForwardDialog(message)}
-                          />
-                        </div>
-                      </header>
-                      {atts.length > 0 ? (
-                        <ul className="chat-attachments">
-                          {atts.map((att) => (
-                            <li key={att.id} className="chat-attachments__item">
-                              <ChatAttachmentView attachment={att} onPreviewImage={openPreviewDialog} />
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {message.messageType === 'nudge' ? (
-                        <p className="chat-bubble__nudge" role="status">
-                          {mine ? '📣 Enviaste un zumbido' : '🔔 Zumbido — te llamó la atención'}
-                        </p>
-                      ) : message.body ? (
-                        <p className="chat-bubble__body">{message.body}</p>
-                      ) : atts.length > 0 ? null : (
-                        <p className="chat-bubble__body">Mensaje sin contenido</p>
-                      )}
+                        <header className="chat-bubble__head">
+                          {!mine && showAuthorInBubbles ? (
+                            <span className="chat-bubble__author">{authorName}</span>
+                          ) : null}
+                          <div className="chat-bubble__head-actions">
+                            <time className="chat-bubble__time" dateTime={message.createdAt}>
+                              {formatMessageTimeOnly(message.createdAt)}
+                            </time>
+                            <MessageActionMenu
+                              message={message}
+                              onCopyText={() => void copyMessageText(message)}
+                              onDownloadAttachments={() => void downloadMessageAttachments(message)}
+                              onForwardAttachments={() => openForwardDialog(message)}
+                            />
+                          </div>
+                        </header>
+                        {atts.length > 0 ? (
+                          <ul className="chat-attachments">
+                            {atts.map((att) => (
+                              <li key={att.id} className="chat-attachments__item">
+                                <ChatAttachmentView attachment={att} onPreviewImage={openPreviewDialog} />
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {message.body ? (
+                          <p className="chat-bubble__body">{message.body}</p>
+                        ) : atts.length > 0 ? null : (
+                          <p className="chat-bubble__body">Mensaje sin contenido</p>
+                        )}
+                        {mine ? (
+                          <footer className="chat-bubble__foot" aria-label="Estado de envío">
+                            Enviado
+                          </footer>
+                        ) : null}
                       </article>
+                      {mine ? (
+                        <span
+                          className="chat-message-row__avatar chat-message-row__avatar--mine"
+                          style={{ background: 'var(--brand-accent)' }}
+                          title={authorName}
+                          aria-hidden="true"
+                        >
+                          {getNameInitials(message.user.name)}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -2834,23 +2965,26 @@ export function ChatPage() {
             }}
           />
           <div className="chat-composer-shell">
-            <button
-              type="button"
-              className="chat-attach-btn chat-composer-icon-btn"
-              aria-label="Adjuntar archivo"
-              title="Adjuntar archivo"
-              disabled={!activeChannelId}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <i className="ti ti-paperclip" aria-hidden="true" />
-            </button>
-            <div className="chat-emoji-anchor">
+            <div className="chat-composer-icon-stack">
+              <button
+                type="button"
+                className="chat-attach-btn chat-composer-icon-btn"
+                aria-label="Adjuntar archivo"
+                title="Adjuntar archivo o imagen"
+                disabled={!activeChannelId}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <i className="ti ti-paperclip" aria-hidden="true" />
+              </button>
+              <span className="chat-composer-icon-label">Adjuntar</span>
+            </div>
+            <div className="chat-emoji-anchor chat-composer-icon-stack">
               <button
                 type="button"
                 ref={emojiButtonRef}
                 className="chat-attach-btn chat-composer-icon-btn"
                 aria-label="Insertar emoji"
-                title="Insertar emoji"
+                title="Insertar emoji en el mensaje"
                 aria-haspopup="dialog"
                 aria-expanded={emojiPickerOpen}
                 aria-controls={emojiPickerOpen ? 'chat-emoji-picker-popover' : undefined}
@@ -2862,40 +2996,52 @@ export function ChatPage() {
               >
                 <i className="ti ti-mood-smile" aria-hidden="true" />
               </button>
-              {emojiPickerOpen ? (
-                <div
-                  ref={emojiPopoverRef}
-                  id="chat-emoji-picker-popover"
-                  className="chat-emoji-popover"
-                  role="dialog"
-                  aria-label="Selector de emoji"
-                >
-                  <Suspense
-                    fallback={<div className="chat-emoji-popover__loading">Cargando emojis…</div>}
-                  >
-                    <LazyEmojiPicker
-                      theme={Theme.LIGHT}
-                      lazyLoadEmojis
-                      skinTonesDisabled
-                      onEmojiClick={(data: EmojiClickData) => {
-                        insertEmoji(data.emoji);
-                        setEmojiPickerOpen(false);
-                      }}
-                    />
-                  </Suspense>
-                </div>
-              ) : null}
+              <span className="chat-composer-icon-label">Emoji</span>
             </div>
-            <button
-              type="button"
-              className="chat-attach-btn chat-composer-icon-btn"
-              aria-label="Enviar zumbido"
-              title="Zumbido: avisa con sonido y sacudida (como Messenger clásico). Máx. 1 cada 15 s."
-              disabled={!activeChannelId}
-              onClick={() => sendNudge()}
-            >
-              <i className="ti ti-bell" aria-hidden="true" />
-            </button>
+            {emojiPickerOpen && emojiPopoverLayout
+              ? createPortal(
+                  <div
+                    ref={emojiPopoverRef}
+                    id="chat-emoji-picker-popover"
+                    className="chat-emoji-popover chat-emoji-popover--portal"
+                    style={{
+                      top: emojiPopoverLayout.top,
+                      left: emojiPopoverLayout.left,
+                      width: emojiPopoverLayout.width,
+                      height: emojiPopoverLayout.height,
+                    }}
+                    role="dialog"
+                    aria-label="Selector de emoji"
+                  >
+                    <Suspense
+                      fallback={<div className="chat-emoji-popover__loading">Cargando emojis…</div>}
+                    >
+                      <LazyEmojiPicker
+                        width={emojiPopoverLayout.width}
+                        height={emojiPopoverLayout.height}
+                        onEmojiClick={(data: EmojiClickData) => {
+                          insertEmoji(data.emoji);
+                          setEmojiPickerOpen(false);
+                        }}
+                      />
+                    </Suspense>
+                  </div>,
+                  document.body,
+                )
+              : null}
+            <div className="chat-composer-icon-stack">
+              <button
+                type="button"
+                className="chat-attach-btn chat-composer-icon-btn chat-composer-icon-btn--nudge"
+                aria-label="Enviar recordatorio (zumbido)"
+                title="Recordatorio: avisa con sonido y vibración. Máximo 1 cada 15 segundos."
+                disabled={!activeChannelId}
+                onClick={() => sendNudge()}
+              >
+                <i className="ti ti-bell" aria-hidden="true" />
+              </button>
+              <span className="chat-composer-icon-label">Zumbido</span>
+            </div>
             <textarea
               ref={composerTextareaRef}
               className="chat-textarea chat-composer__grow"

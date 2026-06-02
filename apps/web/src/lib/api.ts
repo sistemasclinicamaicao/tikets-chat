@@ -165,6 +165,7 @@ type VerifyOtpResponse = {
     email?: string | null;
     global_role: string | null;
     department_roles: DepartmentRoleEntry[];
+    has_presentation_avatar?: boolean;
   };
 };
 
@@ -180,6 +181,8 @@ export type CurrentUserProfile = {
   is_active: boolean;
   global_role: string | null;
   department_roles: DepartmentRoleEntry[];
+  /** Foto de carta GTH en Comunicaciones; evita peticiones innecesarias al avatar de login. */
+  has_presentation_avatar?: boolean;
 };
 
 const KNOWN_GLOBAL_ROLES = new Set(['admin', 'auditor']);
@@ -279,10 +282,16 @@ export function isStoredGlobalAdmin(): boolean {
 }
 
 const DEPARTMENT_ROLE_LABELS: Record<string, string> = {
+  dept_admin: 'Administrador de departamento',
   supervisor: 'Supervisor de área',
   tecnico_area: 'Técnico de área',
-  admin: 'Administrador de área',
 };
+
+const OPERATIONAL_DEPARTMENT_ROLES = new Set(['dept_admin', 'supervisor', 'tecnico_area']);
+
+function hasOperationalDepartmentRole(role: string): boolean {
+  return OPERATIONAL_DEPARTMENT_ROLES.has(role);
+}
 
 export function formatDepartmentRoleLabel(role: string): string {
   const key = role.trim().toLowerCase();
@@ -321,6 +330,7 @@ export function currentUserProfileFromVerifyUser(user: VerifyOtpResponse['user']
     is_active: true,
     global_role: user.global_role,
     department_roles: user.department_roles ?? [],
+    has_presentation_avatar: user.has_presentation_avatar,
   });
 }
 
@@ -416,6 +426,14 @@ export type TicketDetail = {
       sizeBytes: number;
     };
   }>;
+  customDataJson?: Record<string, unknown>;
+  gthOnboarding?: {
+    externalRowKey: string;
+    documentId: string | null;
+    documentType: string | null;
+    fullName: string;
+    cargo: string;
+  } | null;
 };
 type ChatChannel = {
   id: string;
@@ -667,6 +685,40 @@ export function verifyOtp(employee_id: string, otp_code: string, device_name?: s
   return request<VerifyOtpResponse>('/auth/verify-otp', 'POST', body);
 }
 
+/** Indica si hay foto GTH para avatar de login (200 siempre; sin JWT). */
+export async function fetchLoginAvatarAvailable(employeeId: string): Promise<boolean> {
+  const id = employeeId.trim();
+  if (!id) return false;
+  try {
+    const response = await fetch(`${API_BASE}/auth/login-avatar/${encodeURIComponent(id)}`, {
+      method: 'GET',
+    });
+    if (!response.ok) return false;
+    const data = (await response.json().catch(() => ({}))) as { available?: boolean };
+    return Boolean(data.available);
+  } catch {
+    return false;
+  }
+}
+
+/** Fotografía de carta de presentación GTH para avatar de login (sin JWT). */
+export async function fetchLoginAvatarBlob(employeeId: string): Promise<Blob> {
+  const id = employeeId.trim();
+  if (!id) throw new ApiError('Cédula vacía', 400);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/auth/login-avatar/${encodeURIComponent(id)}/content`, {
+      method: 'GET',
+    });
+  } catch {
+    throw new ApiError(`No se pudo conectar con ${API_BASE}. Revisa red, DNS o VPN.`, 0);
+  }
+  if (!response.ok) {
+    throw buildApiError(response, {});
+  }
+  return response.blob();
+}
+
 export function getCurrentUserProfile() {
   return request<unknown>('/auth/me', 'GET').then(coerceCurrentUserProfile);
 }
@@ -781,6 +833,151 @@ export function assignTicketApi(ticketId: string, body: { assignedTo: string; no
   return request<TicketDetail>(`/tickets/${ticketId}/assign`, 'POST', body);
 }
 
+export async function uploadTicketAttachment(ticketId: string, file: File, role = 'general') {
+  const post = () => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (role) fd.append('role', role);
+    return fetch(`${API_BASE}/tickets/${ticketId}/attachments`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: fd,
+    });
+  };
+  let response = await post();
+  if (response.status === 401) {
+    const newAccess = await refreshAccessToken();
+    if (newAccess) response = await post();
+    else clearSession();
+  }
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    const message = Array.isArray(data.message) ? data.message.join('; ') : data.message;
+    throw new ApiError(message ?? 'Error al subir adjunto', response.status, data.message);
+  }
+  return response.json() as Promise<{
+    id: string;
+    attachmentRole: string;
+    url: string;
+    attachment: { id: string; originalName: string; mimeType: string; sizeBytes: number };
+  }>;
+}
+
+export type GthComunicacionesRecordRow = {
+  id: string;
+  external_row_key: string;
+  document_id: string | null;
+  full_name: string;
+  cargo: string;
+  estado: string;
+  area: string;
+  tipo_contrato: string;
+  is_active: boolean;
+  has_photo: boolean;
+  photo_attachment_id: string | null;
+  photo_uploaded_at: string | null;
+  last_synced_at: string;
+  created_at: string;
+};
+
+export type GthComunicacionesRecordDetail = GthComunicacionesRecordRow & {
+  payload: Record<string, unknown>;
+};
+
+export type GthComunicacionesRecordsPage = {
+  data: GthComunicacionesRecordRow[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+};
+
+export type GthComunicacionesRecordsQuery = {
+  includeInactive?: boolean;
+  q?: string;
+  area?: string;
+  cargo?: string;
+  estado?: string;
+  tipoContrato?: string;
+  hasPhoto?: 'true' | 'false' | 'all';
+  page?: number;
+  limit?: number;
+};
+
+export type GthComunicacionesFilterOptions = {
+  AREA: string[];
+  ESTADO: string[];
+  CARGO: string[];
+  TIPOCONTRATO: string[];
+};
+
+export function fetchGthComunicacionesFilterOptions(
+  departmentId: string,
+  includeInactive?: boolean,
+) {
+  const q = new URLSearchParams({ departmentId });
+  if (includeInactive) q.set('includeInactive', 'true');
+  return request<GthComunicacionesFilterOptions>(
+    `/comunicaciones/gth-records/filter-options?${q.toString()}`,
+    'GET',
+  );
+}
+
+export function fetchGthComunicacionesRecords(
+  departmentId: string,
+  options?: GthComunicacionesRecordsQuery,
+) {
+  const q = new URLSearchParams({ departmentId });
+  if (options?.includeInactive) q.set('includeInactive', 'true');
+  if (options?.q?.trim()) q.set('q', options.q.trim());
+  if (options?.area?.trim()) q.set('area', options.area.trim());
+  if (options?.cargo?.trim()) q.set('cargo', options.cargo.trim());
+  if (options?.estado?.trim()) q.set('estado', options.estado.trim());
+  if (options?.tipoContrato?.trim()) q.set('tipoContrato', options.tipoContrato.trim());
+  if (options?.hasPhoto && options.hasPhoto !== 'all') q.set('hasPhoto', options.hasPhoto);
+  if (options?.page) q.set('page', String(options.page));
+  if (options?.limit) q.set('limit', String(options.limit));
+  return request<GthComunicacionesRecordsPage>(`/comunicaciones/gth-records?${q.toString()}`, 'GET');
+}
+
+export function fetchGthComunicacionesRecord(departmentId: string, recordId: string) {
+  const q = new URLSearchParams({ departmentId });
+  return request<GthComunicacionesRecordDetail>(
+    `/comunicaciones/gth-records/${encodeURIComponent(recordId)}?${q.toString()}`,
+    'GET',
+  );
+}
+
+export async function fetchGthComunicacionesPhotoBlob(departmentId: string, recordId: string) {
+  const response = await authFetch(
+    `/comunicaciones/gth-records/${recordId}/photo/content?departmentId=${encodeURIComponent(departmentId)}`,
+    { method: 'GET' },
+  );
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    throw buildApiError(response, data);
+  }
+  return response.blob();
+}
+
+export async function uploadGthComunicacionesPhoto(
+  departmentId: string,
+  recordId: string,
+  file: File,
+) {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await authFetch(
+    `/comunicaciones/gth-records/${recordId}/photo?departmentId=${encodeURIComponent(departmentId)}`,
+    { method: 'POST', body: form },
+  );
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    throw buildApiError(response, data);
+  }
+  return (await response.json()) as GthComunicacionesRecordRow;
+}
+
 export function getChatChannels() {
   return request<ChatChannel[]>('/chat/channels', 'GET');
 }
@@ -888,6 +1085,37 @@ export async function fetchAttachmentBlob(attachmentId: string) {
     throw buildApiError(response, data);
   }
   return response.blob();
+}
+
+/** Contenido del adjunto vía API (evita cargar URLs firmadas con certificado no confiable en el navegador). */
+export async function fetchTicketAttachmentBlob(ticketId: string, attachmentId: string) {
+  const response = await authFetch(
+    `/tickets/${ticketId}/attachments/${attachmentId}/content`,
+    { method: 'GET' },
+  );
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    throw buildApiError(response, data);
+  }
+  return response.blob();
+}
+
+export async function downloadTicketAttachment(
+  ticketId: string,
+  attachmentId: string,
+  filename: string,
+) {
+  const blob = await fetchTicketAttachmentBlob(ticketId, attachmentId);
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function markChannelRead(channelId: string) {
@@ -1153,14 +1381,131 @@ export function adminProbeIntegration(id: string) {
   return request<AdminIntegrationProbeResult>(`/admin/integrations/${id}/probe`, 'POST');
 }
 
-export function adminListUsers(opts?: { skip?: number; take?: number }) {
+export type AdminUsersSummary = {
+  total: number;
+  admin: number;
+  auditor: number;
+  without_global_role: number;
+  inactive: number;
+};
+
+export type AdminUsersListResponse = {
+  items: AdminUserRow[];
+  total: number;
+  skip: number;
+  take: number;
+  summary: AdminUsersSummary;
+};
+
+export function adminListUsers(opts?: {
+  skip?: number;
+  take?: number;
+  q?: string;
+  global_role?: 'admin' | 'auditor' | 'none';
+  is_active?: boolean;
+}) {
   const q = new URLSearchParams();
   if (opts?.skip != null) q.set('skip', String(opts.skip));
   if (opts?.take != null) q.set('take', String(opts.take));
+  if (opts?.q?.trim()) q.set('q', opts.q.trim());
+  if (opts?.global_role) q.set('global_role', opts.global_role);
+  if (opts?.is_active === true) q.set('is_active', 'true');
+  else if (opts?.is_active === false) q.set('is_active', 'false');
   const qs = q.toString();
-  return request<{ items: AdminUserRow[]; total: number; skip: number; take: number }>(
-    `/admin/users${qs ? `?${qs}` : ''}`,
+  return request<AdminUsersListResponse>(`/admin/users${qs ? `?${qs}` : ''}`, 'GET');
+}
+
+export type AdminGthDirectoryRow = Record<string, unknown>;
+
+export type AdminGthLastSyncInfo = {
+  id: string;
+  synced_at: string;
+  imported: number;
+  added_count: number;
+  removed_count: number;
+};
+
+export type AdminGthLastSyncAdditions = AdminGthLastSyncInfo & {
+  additions: Array<{
+    document_id: string | null;
+    external_row_key: string;
+    payload: AdminGthDirectoryRow;
+  }>;
+  new_document_ids: string[];
+  new_external_row_keys: string[];
+};
+
+export type AdminGthDirectoryResponse = {
+  integration: { id: string; name: string };
+  http: { ok: boolean; status: number; status_text: string };
+  rows: AdminGthDirectoryRow[];
+  total: number;
+  total_stored?: number;
+  source?: 'internal';
+  last_synced_at?: string | null;
+  last_sync?: AdminGthLastSyncInfo | null;
+  last_sync_additions?: AdminGthLastSyncAdditions | null;
+  /** Origen del listado de columnas: última sync o escaneo del directorio. */
+  field_source?: 'last_sync' | 'directory';
+  body_truncated?: boolean;
+  non_json_preview?: string;
+  error?: string;
+  available_fields?: string[];
+};
+
+export type AdminGthDirectorySyncResponse = {
+  ok: boolean;
+  imported: number;
+  added: number;
+  removed: number;
+  added_document_ids: string[];
+  added_without_document: number;
+  removed_document_ids?: string[];
+  sync_run_id?: string;
+  records_upserted?: number;
+  users_created?: number;
+  users_updated?: number;
+  users_skipped?: number;
+  available_fields?: string[];
+  integration: { id: string; name: string };
+  http: { ok: boolean; status: number; status_text: string };
+  error?: string;
+};
+
+export type AdminGthUsersSyncResponse = {
+  updated: number;
+  created: number;
+  skipped: number;
+};
+
+/** Directorio GTH desde tabla interna PostgreSQL (`gth_directory`). */
+export function adminGetGthDirectory(
+  options?: { lastSyncAdditions?: boolean; signal?: AbortSignal },
+) {
+  const qs =
+    options?.lastSyncAdditions === true ? '?last_sync_additions=true' : '';
+  return request<AdminGthDirectoryResponse>(
+    `/admin/users/gth${qs}`,
     'GET',
+    undefined,
+    true,
+    options?.signal,
+  );
+}
+
+/** Importa CONEXION-GTH y sustituye filas en `gth_directory`. */
+export function postAdminGthDirectorySync(signal?: AbortSignal) {
+  return request<AdminGthDirectorySyncResponse>('/admin/users/gth/sync', 'POST', undefined, true, signal);
+}
+
+/** Propaga `gth_directory` → tabla `users` (login OTP) sin llamar al API externo. */
+export function postAdminGthSyncUsers(signal?: AbortSignal) {
+  return request<AdminGthUsersSyncResponse>(
+    '/admin/users/gth/sync-users',
+    'POST',
+    undefined,
+    true,
+    signal,
   );
 }
 
@@ -1174,7 +1519,61 @@ export function adminSetUserDepartmentRoles(userId: string, roles: DepartmentRol
   });
 }
 
-/** Usuario puede ver el módulo de inventario (admin, auditor o rol de área técnico/supervisor). */
+export type DepartmentUserMember = {
+  user_id: string;
+  employee_id: string;
+  name: string;
+  is_active: boolean;
+  role: string;
+};
+
+export type DepartmentUserSearchHit = {
+  user_id: string;
+  employee_id: string;
+  name: string;
+  in_department: boolean;
+  current_role: string | null;
+};
+
+export const ASSIGNABLE_DEPARTMENT_ROLES = ['dept_admin', 'supervisor', 'tecnico_area'] as const;
+
+export function listDepartmentUsers(departmentId: string) {
+  return request<{ department_id: string; items: DepartmentUserMember[] }>(
+    `/departments/${departmentId}/users`,
+    'GET',
+  );
+}
+
+export function searchDepartmentUsers(departmentId: string, q: string) {
+  const qs = new URLSearchParams({ q });
+  return request<{ department_id: string; items: DepartmentUserSearchHit[] }>(
+    `/departments/${departmentId}/users/search?${qs.toString()}`,
+    'GET',
+  );
+}
+
+export function upsertDepartmentUser(departmentId: string, userId: string, role: string) {
+  return request<DepartmentUserMember>(`/departments/${departmentId}/users/${userId}`, 'PUT', {
+    role,
+  });
+}
+
+export function removeDepartmentUser(departmentId: string, userId: string) {
+  return request<{ ok: boolean }>(`/departments/${departmentId}/users/${userId}`, 'DELETE');
+}
+
+export function canManageDepartmentUsers(
+  profile: CurrentUserProfile | null,
+  departmentId: string,
+): boolean {
+  if (!profile) return false;
+  if (isGlobalAdminRole(profile.global_role)) return true;
+  return (profile.department_roles ?? []).some(
+    (r) => r.department_id === departmentId && r.role === 'dept_admin',
+  );
+}
+
+/** Usuario puede ver el módulo de inventario (admin, auditor o rol de área operativo). */
 export function canWriteInventoryForDepartment(
   profile: CurrentUserProfile | null,
   departmentId: string,
@@ -1183,9 +1582,7 @@ export function canWriteInventoryForDepartment(
   if (normalizeGlobalRole(profile.global_role) === 'auditor') return false;
   if (isGlobalAdminRole(profile.global_role)) return true;
   return (profile.department_roles ?? []).some(
-    (r) =>
-      r.department_id === departmentId &&
-      (r.role === 'supervisor' || r.role === 'tecnico_area'),
+    (r) => r.department_id === departmentId && hasOperationalDepartmentRole(r.role),
   );
 }
 
@@ -1196,7 +1593,7 @@ export function canAccessInventoryUi(): boolean {
   try {
     const raw = authGet('user_department_roles');
     const roles = raw ? (JSON.parse(raw) as DepartmentRoleEntry[]) : [];
-    return roles.some((r) => r.role === 'supervisor' || r.role === 'tecnico_area');
+    return roles.some((r) => hasOperationalDepartmentRole(r.role));
   } catch {
     return false;
   }
@@ -1211,7 +1608,7 @@ export function filterDepartmentsForInventory(
   }
   const allowed = new Set(
     (profile.department_roles ?? [])
-      .filter((r) => r.role === 'supervisor' || r.role === 'tecnico_area')
+      .filter((r) => hasOperationalDepartmentRole(r.role))
       .map((r) => r.department_id),
   );
   return allDepts.filter((d) => allowed.has(d.id));
