@@ -39,6 +39,7 @@ export function departmentDefaultPath(departmentId: string, name: string): strin
 
 export type DepartmentCardAction = {
   label: string;
+  iconClass: string;
   to: string;
   variant: 'primary' | 'cta';
 };
@@ -55,6 +56,7 @@ export function departmentCardActions(departmentId: string, name: string): Depar
     return [
       {
         label: 'Ver altas GTH',
+        iconClass: 'ti-user-check',
         to: departmentAltasGthPath(departmentId),
         variant: 'primary',
       },
@@ -63,11 +65,13 @@ export function departmentCardActions(departmentId: string, name: string): Depar
   return [
     {
       label: 'Abrir hoja de vida',
+      iconClass: 'ti-device-desktop',
       to: departmentInventoryPcPath(departmentId),
       variant: 'primary',
     },
     {
       label: 'Mantenimientos',
+      iconClass: 'ti-tools',
       to: departmentMantenimientosPath(departmentId),
       variant: 'cta',
     },

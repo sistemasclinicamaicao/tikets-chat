@@ -7457,6 +7457,36 @@ a.inventory-btn {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
+  align-items: center;
+}
+.inventory-dept-card__icon-btn {
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.inventory-dept-card__actions a.inventory-dept-card__icon-btn--primary {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--brand-primary);
+}
+.inventory-dept-card__actions a.inventory-dept-card__icon-btn--primary:hover {
+  background: var(--ui-primary-hover);
+  border-color: var(--ui-primary-hover);
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+.inventory-dept-card__actions a.inventory-dept-card__icon-btn--cta {
+  background: var(--btn-inv-cta, var(--brand-primary));
+  border-color: var(--btn-inv-cta, var(--brand-primary));
+  color: #fff;
+}
+.inventory-dept-card__actions a.inventory-dept-card__icon-btn--cta:hover {
+  background: var(--btn-inv-cta-hover, var(--brand-dark));
+  border-color: var(--btn-inv-cta-hover, var(--brand-dark));
+  color: #fff;
+  text-decoration: none;
+}
+.inventory-dept-card__actions a.inventory-dept-card__icon-btn .ti {
+  color: inherit;
 }
 .inventory-dept-card__hint {
   margin: 0;

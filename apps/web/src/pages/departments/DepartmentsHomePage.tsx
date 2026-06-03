@@ -63,18 +63,22 @@ export function DepartmentsHomePage() {
                   {actions.map((action) => (
                     <Link
                       key={action.to}
-                      className={`inventory-btn inventory-btn--${action.variant === 'cta' ? 'cta' : 'primary'}`}
+                      className={`inventory-icon-btn inventory-dept-card__icon-btn inventory-dept-card__icon-btn--${action.variant}`}
                       to={action.to}
+                      title={action.label}
+                      aria-label={action.label}
                     >
-                      {action.label}
+                      <i className={`ti ${action.iconClass}`} aria-hidden="true" />
                     </Link>
                   ))}
                   {showUserMgmt ? (
                     <Link
-                      className="inventory-btn inventory-btn--cta"
+                      className="inventory-icon-btn inventory-dept-card__icon-btn inventory-dept-card__icon-btn--cta"
                       to={departmentUsuariosPath(d.id)}
+                      title="Gestión de usuarios"
+                      aria-label="Gestión de usuarios"
                     >
-                      Gestión de usuarios
+                      <i className="ti ti-users" aria-hidden="true" />
                     </Link>
                   ) : null}
                 </div>
