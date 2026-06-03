@@ -121,6 +121,14 @@ export class GthMysqlPhotoSyncService {
       return { ok: 0, skipped: 0, failed: 0, total: 0, photo_count: null };
     }
 
+    try {
+      await this.mysql.ensureSchema();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`MySQL ensureSchema failed: ${message}`);
+      return { ok: 0, skipped: 0, failed: 0, total: 0, photo_count: await this.mysql.countPhotos() };
+    }
+
     let cursor: string | undefined;
     let total = 0;
     let ok = 0;

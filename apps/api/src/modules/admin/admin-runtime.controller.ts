@@ -75,6 +75,23 @@ export class AdminRuntimeController {
     return { ...info, ok: ping.ok, error: ping.error ?? null, photo_count: count };
   }
 
+  @Post('gth-mysql/ensure-schema')
+  @ApiOperation({ summary: 'Recrear tabla gth_fotos en MySQL Hostinger (destructivo)' })
+  async ensureGthMysqlSchema() {
+    const info = this.gthMysql.getRuntimeInfo();
+    if (!info.gth_mysql_enabled) {
+      return { ...info, ok: false, error: 'GTH MySQL no configurado' };
+    }
+    try {
+      await this.gthMysql.ensureSchema();
+      const photo_count = await this.gthMysql.countPhotos();
+      return { ...info, ok: true, error: null, photo_count };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ...info, ok: false, error: message };
+    }
+  }
+
   @Post('gth-mysql/sync')
   @ApiOperation({ summary: 'Backfill: copiar fotos GTH desde Postgres hacia MySQL Hostinger' })
   async syncGthMysqlPhotos() {

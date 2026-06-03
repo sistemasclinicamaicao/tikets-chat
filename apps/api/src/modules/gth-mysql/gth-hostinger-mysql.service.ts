@@ -4,6 +4,19 @@ import { createPool } from 'mysql2/promise';
 import { gthMysqlRuntimeInfo, readGthMysqlConfig, type GthMysqlConfig } from './gth-mysql.config';
 import type { GthMysqlPhotoRow } from './gth-mysql-photo-row.util';
 
+const GTH_FOTOS_DDL = `
+CREATE TABLE gth_fotos (
+  cedula_digits VARCHAR(32) NOT NULL PRIMARY KEY,
+  tipo_documento VARCHAR(32) NULL,
+  documento_display VARCHAR(64) NULL,
+  nombre VARCHAR(255) NULL,
+  mime_type VARCHAR(127) NOT NULL,
+  foto LONGBLOB NOT NULL,
+  record_id CHAR(36) NULL,
+  actualizado_en DATETIME NOT NULL,
+  INDEX idx_actualizado (actualizado_en)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
+
 @Injectable()
 export class GthHostingerMysqlService implements OnModuleDestroy {
   private readonly logger = new Logger(GthHostingerMysqlService.name);
@@ -59,6 +72,14 @@ export class GthHostingerMysqlService implements OnModuleDestroy {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, error: message };
     }
+  }
+
+  /** Recrea gth_fotos con el esquema esperado (destructivo si ya existía). */
+  async ensureSchema(): Promise<void> {
+    if (!this.pool) return;
+    await this.pool.query('DROP TABLE IF EXISTS gth_fotos');
+    await this.pool.query(GTH_FOTOS_DDL);
+    this.logger.log('Tabla MySQL gth_fotos creada/actualizada');
   }
 
   async upsertPhoto(row: GthMysqlPhotoRow): Promise<void> {

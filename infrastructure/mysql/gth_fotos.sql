@@ -1,7 +1,10 @@
 -- Tabla réplica de fotos GTH (Comunicaciones) para integraciones en Hostinger / clinicamaicao.com
 -- Ejecutar en phpMyAdmin sobre la BD u680603156_fotos
+-- Si la tabla existe con columnas incorrectas, DROP + CREATE corrige el esquema (pierde filas existentes).
 
-CREATE TABLE IF NOT EXISTS gth_fotos (
+DROP TABLE IF EXISTS gth_fotos;
+
+CREATE TABLE gth_fotos (
   cedula_digits VARCHAR(32) NOT NULL PRIMARY KEY,
   tipo_documento VARCHAR(32) NULL,
   documento_display VARCHAR(64) NULL,
