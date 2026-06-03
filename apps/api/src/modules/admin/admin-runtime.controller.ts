@@ -87,6 +87,7 @@ export class AdminRuntimeController {
       return { ...info, ok: false, error: ping.error ?? 'MySQL no accesible' };
     }
     const result = await this.gthMysqlSync.backfillAll();
+    const failures = await this.gthMysqlSync.getRecentSyncFailures(10);
     return {
       ...info,
       ok: true,
@@ -96,7 +97,17 @@ export class AdminRuntimeController {
       failed: result.failed,
       total: result.total,
       photo_count: result.photo_count,
+      failures,
     };
+  }
+
+  @Get('gth-mysql/status')
+  @ApiOperation({ summary: 'Estado de sincronización GTH fotos → MySQL' })
+  async gthMysqlSyncStatus() {
+    const info = this.gthMysql.getRuntimeInfo();
+    const failures = await this.gthMysqlSync.getRecentSyncFailures(15);
+    const photo_count = info.gth_mysql_enabled ? await this.gthMysql.countPhotos() : null;
+    return { ...info, photo_count, failures };
   }
 
   @Get('storage')

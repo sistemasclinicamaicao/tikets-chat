@@ -157,6 +157,42 @@ export class GthMysqlPhotoSyncService {
     return { ok, skipped, failed, total, photo_count };
   }
 
+  async getRecentSyncFailures(limit = 15): Promise<
+    Array<{
+      id: string;
+      document_id: string | null;
+      full_name: string;
+      photo_size_bytes: number | null;
+      mysql_photo_sync_last_error: string | null;
+      mysql_photo_sync_attempts: number;
+    }>
+  > {
+    const rows = await this.prisma.gthComunicacionesRecord.findMany({
+      where: {
+        photoSizeBytes: { gt: 0 },
+        OR: [{ mysqlPhotoSyncedAt: null }, { mysqlPhotoSyncLastError: { not: null } }],
+      },
+      orderBy: { photoUploadedAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        documentId: true,
+        fullName: true,
+        photoSizeBytes: true,
+        mysqlPhotoSyncLastError: true,
+        mysqlPhotoSyncAttempts: true,
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      document_id: row.documentId,
+      full_name: row.fullName,
+      photo_size_bytes: row.photoSizeBytes,
+      mysql_photo_sync_last_error: row.mysqlPhotoSyncLastError,
+      mysql_photo_sync_attempts: row.mysqlPhotoSyncAttempts,
+    }));
+  }
+
   private async markFailure(recordId: string, error: string, attempts: number): Promise<void> {
     const trimmed = error.trim().slice(0, 500);
     await this.prisma.gthComunicacionesRecord.update({
