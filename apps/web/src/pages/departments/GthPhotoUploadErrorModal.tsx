@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 type Props = {
   open: boolean;
   fullName: string;
-  documentId: string | null;
+  documentDisplay: string | null;
   message: string;
   onClose: () => void;
 };
@@ -12,7 +12,7 @@ type Props = {
 export function GthPhotoUploadErrorModal({
   open,
   fullName,
-  documentId,
+  documentDisplay,
   message,
   onClose,
 }: Props) {
@@ -33,7 +33,7 @@ export function GthPhotoUploadErrorModal({
 
   if (!open) return null;
 
-  const docLabel = documentId?.trim() || '—';
+  const docLabel = documentDisplay?.trim() || '—';
 
   return (
     <div
@@ -65,7 +65,7 @@ export function GthPhotoUploadErrorModal({
               <dd>{fullName}</dd>
             </div>
             <div>
-              <dt>Cédula</dt>
+              <dt>DOCUMENTO</dt>
               <dd>{docLabel}</dd>
             </div>
           </dl>

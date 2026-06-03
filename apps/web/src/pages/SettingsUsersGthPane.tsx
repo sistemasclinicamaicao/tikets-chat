@@ -12,6 +12,8 @@ import {
   getGthRowValue,
   gthRowSearchText,
   gthRowStableExternalKey,
+  gthTableCellText,
+  gthTableColumnLabel,
   normalizeGthDocumentId,
   pickGthRowDocumentId,
   resolveGthCellValue,
@@ -381,7 +383,7 @@ export function SettingsUsersGthPane() {
                 ) : null}
                 {tableColumns.map((col) => (
                   <th key={col} scope="col" title={col}>
-                    {col}
+                    {gthTableColumnLabel(col)}
                   </th>
                 ))}
               </tr>
@@ -435,24 +437,25 @@ export function SettingsUsersGthPane() {
                       </td>
                     ) : null}
                     {tableColumns.map((col) => {
+                      const cellText = gthTableCellText(row, col);
                       const resolved = resolveGthCellValue(row, col);
-                      const { text, title } = cellDisplay(resolved.text);
+                      const { text, title } = cellDisplay(cellText === '—' ? '' : cellText);
                       const cellTitle =
                         title ??
                         (resolved.sourceKey
-                          ? `Columna «${col}» ← campo API «${resolved.sourceKey}»`
-                          : resolved.text
-                            ? col
-                            : `Sin dato en el API para «${col}»`);
-                      const isDocCol = col === 'DOC' && isNew;
+                          ? `Columna «${gthTableColumnLabel(col)}» ← campo API «${resolved.sourceKey}»`
+                          : cellText !== '—'
+                            ? gthTableColumnLabel(col)
+                            : `Sin dato en el API para «${gthTableColumnLabel(col)}»`);
+                      const isDocCol = gthTableColumnLabel(col) === 'DOCUMENTO' && isNew;
                       return (
                         <td key={col} title={cellTitle}>
                           {isDocCol ? (
                             <span className="settings-gth-doc-with-badge">
-                              {resolved.text || '—'}
+                              {text || '—'}
                             </span>
                           ) : (
-                            resolved.text || '—'
+                            text || '—'
                           )}
                         </td>
                       );

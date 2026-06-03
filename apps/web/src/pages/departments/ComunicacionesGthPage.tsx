@@ -108,14 +108,14 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
       <GthPhotoUploadSuccessModal
         open={uploadSuccess !== null}
         fullName={uploadSuccess?.full_name ?? row.full_name}
-        documentId={uploadSuccess?.document_id ?? row.document_id}
+        documentDisplay={uploadSuccess?.document_display ?? row.document_display}
         uploadedAt={uploadSuccess?.photo_uploaded_at ?? null}
         onClose={() => setUploadSuccess(null)}
       />
       <GthPhotoUploadErrorModal
         open={uploadError !== null}
         fullName={row.full_name}
-        documentId={row.document_id}
+        documentDisplay={row.document_display}
         message={uploadError?.message ?? ''}
         onClose={() => setUploadError(null)}
       />
@@ -325,7 +325,7 @@ export function ComunicacionesGthPage() {
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Nombre, cédula, cargo…"
+            placeholder="Nombre, documento, cargo…"
           />
         </label>
 
@@ -380,7 +380,7 @@ export function ComunicacionesGthPage() {
           <thead>
             <tr>
               <th>Nombre</th>
-              <th>Cédula</th>
+              <th>DOCUMENTO</th>
               <th>Cargo</th>
               <th>Estado</th>
               <th>Área</th>
@@ -406,7 +406,7 @@ export function ComunicacionesGthPage() {
               rows.map((row) => (
                 <tr key={row.id} className={rowClassName(row)}>
                   <td>{row.full_name}</td>
-                  <td>{row.document_id ?? '—'}</td>
+                  <td>{row.document_display ?? row.document_id ?? '—'}</td>
                   <td>{row.cargo || '—'}</td>
                   <td>{row.estado}</td>
                   <td>{row.area || '—'}</td>

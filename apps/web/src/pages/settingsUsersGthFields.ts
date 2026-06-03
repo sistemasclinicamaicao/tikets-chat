@@ -348,6 +348,11 @@ export function resolveGthTableColumns(
     columns = columns.filter((col) => columnHasAnyValue(sampleRows, col));
   }
 
+  const hasDocumentCol = columns.some(isGthDocumentNumberColumn);
+  if (hasDocumentCol) {
+    columns = columns.filter((col) => !isGthDocumentTypeColumn(col));
+  }
+
   if (columns.length > 0) return columns;
 
   if (fromApi.length > 0) return sortColumnsByPriority(fromApi);
@@ -377,11 +382,51 @@ export function pickGthRowDocumentId(row: Record<string, unknown>): string | nul
   return normalized || null;
 }
 
+export function pickGthRowDocumentType(row: Record<string, unknown>): string {
+  return getGthRowValue(row, 'TIPO').trim();
+}
+
+/** Tipo + número de documento (p. ej. «CC 1234567890»). */
+export function formatGthDocumentDisplay(
+  row: Record<string, unknown>,
+  documentIdFallback?: string | null,
+): string {
+  const tipo = pickGthRowDocumentType(row);
+  const doc = getGthRowValue(row, 'DOC').trim() || documentIdFallback?.trim() || '';
+  if (tipo && doc) return `${tipo} ${doc}`;
+  if (doc) return doc;
+  if (tipo) return tipo;
+  return '';
+}
+
+function isGthDocumentNumberColumn(col: string): boolean {
+  return acceptedKeysForColumn('DOC').has(normalizeGthFieldKey(col));
+}
+
+function isGthDocumentTypeColumn(col: string): boolean {
+  return acceptedKeysForColumn('TIPO').has(normalizeGthFieldKey(col));
+}
+
+/** Etiqueta de columna en tablas GTH. */
+export function gthTableColumnLabel(col: string): string {
+  if (isGthDocumentNumberColumn(col)) return 'DOCUMENTO';
+  return col;
+}
+
+/** Valor visible de una celda GTH (DOCUMENTO concatena tipo + número). */
+export function gthTableCellText(row: Record<string, unknown>, col: string): string {
+  if (isGthDocumentNumberColumn(col)) {
+    const text = formatGthDocumentDisplay(row);
+    return text || '—';
+  }
+  return resolveGthCellValue(row, col).text || '—';
+}
+
 /** Secciones del modal de detalle GTH (orden de campos por bloque). */
 export const GTH_DETAIL_SECTIONS: ReadonlyArray<{ title: string; columns: readonly string[] }> = [
   {
     title: 'Identificación',
-    columns: ['TIPO', 'DOC', 'CODIGO', 'CODIGO CARNET', 'ESTADO'],
+    columns: ['DOCUMENTO', 'CODIGO', 'CODIGO CARNET', 'ESTADO'],
   },
   {
     title: 'Nombre completo',
@@ -462,6 +507,14 @@ export function buildGthRowDetailSections(
   for (const { title, columns } of GTH_DETAIL_SECTIONS) {
     const fields: GthDetailField[] = [];
     for (const col of columns) {
+      if (col === 'DOCUMENTO') {
+        const value = formatGthDocumentDisplay(row);
+        if (!value) continue;
+        markColumnCovered(coveredColumns, 'TIPO', cols);
+        markColumnCovered(coveredColumns, 'DOC', cols);
+        fields.push({ label: 'DOCUMENTO', value });
+        continue;
+      }
       const resolved = resolveGthCellValue(row, col);
       if (!resolved.text) continue;
       markColumnCovered(coveredColumns, col, cols, resolved.sourceKey);
@@ -503,8 +556,8 @@ export function gthRowDisplayTitle(row: Record<string, unknown>): string {
     getGthRowValue(row, 'SEGUNDOAPELLIDO'),
   ].filter(Boolean);
   if (parts.length > 0) return parts.join(' ');
-  const doc = getGthRowValue(row, 'DOC');
-  if (doc) return `Documento ${doc}`;
+  const doc = formatGthDocumentDisplay(row);
+  if (doc) return doc;
   const cargo = getGthRowValue(row, 'CARGO');
   if (cargo) return cargo;
   return 'Registro GTH';

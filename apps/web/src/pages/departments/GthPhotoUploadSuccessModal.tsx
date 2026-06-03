@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 type Props = {
   open: boolean;
   fullName: string;
-  documentId: string | null;
+  documentDisplay: string | null;
   uploadedAt: string | null;
   onClose: () => void;
 };
@@ -21,7 +21,7 @@ function formatUploadedAt(iso: string | null): string {
 export function GthPhotoUploadSuccessModal({
   open,
   fullName,
-  documentId,
+  documentDisplay,
   uploadedAt,
   onClose,
 }: Props) {
@@ -42,7 +42,7 @@ export function GthPhotoUploadSuccessModal({
 
   if (!open) return null;
 
-  const docLabel = documentId?.trim() || '—';
+  const docLabel = documentDisplay?.trim() || '—';
 
   return (
     <div
@@ -76,7 +76,7 @@ export function GthPhotoUploadSuccessModal({
               <dd>{fullName}</dd>
             </div>
             <div>
-              <dt>Cédula</dt>
+              <dt>DOCUMENTO</dt>
               <dd>{docLabel}</dd>
             </div>
             <div>

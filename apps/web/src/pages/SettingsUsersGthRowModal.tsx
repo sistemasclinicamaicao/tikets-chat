@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import {
   buildGthRowDetailSections,
+  formatGthDocumentDisplay,
   getGthRowValue,
   gthRowDisplayTitle,
   type GthDetailSection,
@@ -48,7 +49,7 @@ export function SettingsUsersGthRowModal({ open, row, tableColumns, isNew, onClo
 
   const sections = buildGthRowDetailSections(row, tableColumns);
   const title = gthRowDisplayTitle(row);
-  const doc = getGthRowValue(row, 'DOC');
+  const doc = formatGthDocumentDisplay(row);
   const cargo = getGthRowValue(row, 'CARGO');
   const area = getGthRowValue(row, 'AREA');
 
@@ -74,7 +75,7 @@ export function SettingsUsersGthRowModal({ open, row, tableColumns, isNew, onClo
               {doc ? (
                 <>
                   <span className="gth-detail-modal__meta-item">
-                    <strong>DOC</strong> {doc}
+                    <strong>DOCUMENTO</strong> {doc}
                   </span>
                   {cargo ? (
                     <span className="gth-detail-modal__meta-item">

@@ -302,6 +302,19 @@ export function pickGthDocumentType(row: Record<string, unknown>): string {
   return resolveGthFieldValue(row, 'TIPO');
 }
 
+/** Tipo + número de documento (p. ej. «CC 1234567890»). */
+export function formatGthDocumentDisplay(
+  row: Record<string, unknown>,
+  documentIdFallback?: string | null,
+): string {
+  const tipo = pickGthDocumentType(row).trim();
+  const doc = resolveGthFieldValue(row, 'DOC').trim() || documentIdFallback?.trim() || '';
+  if (tipo && doc) return `${tipo} ${doc}`;
+  if (doc) return doc;
+  if (tipo) return tipo;
+  return '';
+}
+
 export function buildGthEmployeeSnapshot(row: Record<string, unknown>) {
   return {
     documentId: pickGthDocumentId(row),

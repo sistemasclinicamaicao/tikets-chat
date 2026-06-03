@@ -4,6 +4,7 @@ import { ClinicaDefaultPhotoImg } from '../../components/ClinicaDefaultPhotoImg'
 import { GthComunicacionesRecordPhoto } from '../../components/GthComunicacionesRecordPhoto';
 import {
   buildGthRowDetailSections,
+  formatGthDocumentDisplay,
   getGthRowValue,
   gthRowDisplayTitle,
   normalizeGthFieldKey,
@@ -324,7 +325,9 @@ export function ComunicacionesGthRecordModal({ open, departmentId, recordId, onC
   if (!open || !recordId) return null;
 
   const title = payload ? gthRowDisplayTitle(payload) : detail?.full_name ?? 'Empleado GTH';
-  const doc = payload ? getGthRowValue(payload, 'DOC') : detail?.document_id ?? '';
+  const doc = payload
+    ? formatGthDocumentDisplay(payload, detail?.document_id)
+    : detail?.document_display ?? detail?.document_id ?? '';
   const cargo = detail?.cargo || (payload ? getGthRowValue(payload, 'CARGO') : '');
   const area = detail?.area && detail.area !== '—' ? detail.area : payload ? getGthRowValue(payload, 'AREA') : '';
   const estado = detail?.estado ?? '';
@@ -389,7 +392,7 @@ export function ComunicacionesGthRecordModal({ open, departmentId, recordId, onC
               </div>
               <dl className="gth-presentation-modal__summary">
                 <div className="gth-presentation-modal__summary-row">
-                  <dt>Documento</dt>
+                  <dt>DOCUMENTO</dt>
                   <dd>{doc || detail.document_id || '—'}</dd>
                 </div>
                 <div className="gth-presentation-modal__summary-row">

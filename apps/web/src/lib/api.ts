@@ -898,6 +898,7 @@ export type GthComunicacionesRecordRow = {
   id: string;
   external_row_key: string;
   document_id: string | null;
+  document_display: string | null;
   full_name: string;
   cargo: string;
   estado: string;

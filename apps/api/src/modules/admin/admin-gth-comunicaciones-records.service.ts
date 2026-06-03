@@ -19,6 +19,7 @@ import {
   pickGthDocumentId,
   pickGthEstadoLabel,
   pickGthFingreso,
+  formatGthDocumentDisplay,
   resolveGthFieldValue,
 } from './admin-gth-row.util';
 
@@ -41,6 +42,7 @@ export type GthComunicacionesRecordRow = {
   id: string;
   external_row_key: string;
   document_id: string | null;
+  document_display: string | null;
   full_name: string;
   cargo: string;
   estado: string;
@@ -243,6 +245,7 @@ export class AdminGthComunicacionesRecordsService {
     const displayText = [
       record.full_name,
       record.document_id ?? '',
+      record.document_display ?? '',
       record.cargo,
       record.area,
       record.estado,
@@ -332,10 +335,13 @@ export class AdminGthComunicacionesRecordsService {
     const fullName = buildGthEmployeeFullName(payload);
     const cargo = resolveGthFieldValue(payload, 'CARGO');
     const hasPhoto = this.recordHasPhoto(row);
+    const documentId = pickGthDocumentId(payload) ?? row.documentId;
+    const documentDisplay = formatGthDocumentDisplay(payload, documentId) || documentId;
     return {
       id: row.id,
       external_row_key: row.externalRowKey,
-      document_id: pickGthDocumentId(payload) ?? row.documentId,
+      document_id: documentId,
+      document_display: documentDisplay || null,
       full_name: fullName !== 'Empleado GTH' ? fullName : row.fullName,
       cargo: cargo || row.cargo,
       estado: pickGthEstadoLabel(payload),
