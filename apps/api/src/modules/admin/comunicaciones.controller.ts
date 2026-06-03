@@ -19,7 +19,7 @@ import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { assertInventoryDepartmentAccess } from '../inventory/inventory-access';
 import { AdminGthComunicacionesRecordsService } from './admin-gth-comunicaciones-records.service';
 
-const MAX_GTH_PHOTO_BYTES = 8 * 1024 * 1024;
+const MAX_GTH_PHOTO_BYTES = 6 * 1024 * 1024;
 
 @ApiTags('comunicaciones')
 @ApiBearerAuth('access-token')

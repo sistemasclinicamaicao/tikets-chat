@@ -4223,6 +4223,55 @@ button.chat-person:focus-visible:not(:disabled) {
   color: var(--ui-text);
 }
 
+.gth-photo-upload-error-backdrop {
+  z-index: 2100;
+}
+.gth-photo-upload-error {
+  max-width: 440px !important;
+  text-align: center;
+}
+.gth-photo-upload-error__header {
+  justify-content: center;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.gth-photo-upload-error__icon-wrap {
+  padding: 20px 18px 0;
+}
+.gth-photo-upload-error__icon {
+  font-size: 3rem;
+  color: #d97706;
+  line-height: 1;
+}
+.gth-photo-upload-error__body {
+  padding: 0 18px 8px;
+  text-align: left;
+}
+.gth-photo-upload-error__lead {
+  padding-top: 0 !important;
+  text-align: center;
+  color: var(--ui-text);
+}
+.gth-photo-upload-error__meta {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+.gth-photo-upload-error__meta dt {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ui-text-muted, #64748b);
+}
+.gth-photo-upload-error__meta dd {
+  margin: 2px 0 0;
+  font-weight: 500;
+  color: var(--ui-text);
+}
+
 .gth-photo-only-modal__status--error {
   color: #fecaca;
   max-width: 320px;

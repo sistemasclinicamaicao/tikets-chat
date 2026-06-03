@@ -15,8 +15,10 @@ import {
 } from '../../lib/api';
 import { ClinicaDefaultPhotoImg } from '../../components/ClinicaDefaultPhotoImg';
 import { GthPhotoOnlyModal } from './GthPhotoOnlyModal';
+import { GthPhotoUploadErrorModal } from './GthPhotoUploadErrorModal';
 import { GthPhotoUploadSuccessModal } from './GthPhotoUploadSuccessModal';
 import { GTH_FILTER_FIELDS } from '../settingsUsersGthFields';
+import { prepareGthPhotoForUpload } from '../../lib/gthPhotoUpload';
 import { DEPARTMENTS_BASE } from './departmentExperience';
 
 const PAGE_SIZE = 25;
@@ -39,19 +41,26 @@ type RowUploadProps = {
 function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState<GthComunicacionesRecordRow | null>(null);
+  const [uploadError, setUploadError] = useState<{ message: string } | null>(null);
 
   async function onFileChange(file: File | undefined) {
     if (!file || busy) return;
     setBusy(true);
-    setError('');
+    setUploadError(null);
     try {
-      const updated = await uploadGthComunicacionesPhoto(departmentId, row.id, file);
+      const prepared = await prepareGthPhotoForUpload(file);
+      const updated = await uploadGthComunicacionesPhoto(departmentId, row.id, prepared);
       onUploaded(updated);
       setUploadSuccess(updated);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'No se pudo subir la fotografía');
+      const message =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'No se pudo subir la fotografía';
+      setUploadError({ message });
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -86,8 +95,8 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
       <label
         htmlFor={`gth-photo-${row.id}`}
         className="inventory-icon-btn"
-        title={error || (busy ? 'Subiendo…' : uploadLabel)}
-        aria-label={error || (busy ? 'Subiendo fotografía' : uploadLabel)}
+        title={busy ? 'Subiendo…' : uploadLabel}
+        aria-label={busy ? 'Subiendo fotografía' : uploadLabel}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
@@ -102,6 +111,13 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
         documentId={uploadSuccess?.document_id ?? row.document_id}
         uploadedAt={uploadSuccess?.photo_uploaded_at ?? null}
         onClose={() => setUploadSuccess(null)}
+      />
+      <GthPhotoUploadErrorModal
+        open={uploadError !== null}
+        fullName={row.full_name}
+        documentId={row.document_id}
+        message={uploadError?.message ?? ''}
+        onClose={() => setUploadError(null)}
       />
     </div>
   );

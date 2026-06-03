@@ -111,6 +111,13 @@ function buildApiError(
       rawMessage,
     );
   }
+  if (response.status === 413) {
+    return new ApiError(
+      'La imagen supera el límite permitido por el servidor. Prueba con otra foto más pequeña.',
+      response.status,
+      rawMessage,
+    );
+  }
   if (response.status === 429) {
     return new ApiError('Demasiados intentos. Espera un minuto e inténtalo de nuevo.', response.status, rawMessage);
   }
