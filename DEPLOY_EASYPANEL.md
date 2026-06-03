@@ -84,7 +84,7 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
    - Variables en el servicio API: `GTH_MYSQL_HOST`, `GTH_MYSQL_DATABASE`, `GTH_MYSQL_USER`, `GTH_MYSQL_PASSWORD`, etc. (ver [`.env.easypanel.example`](.env.easypanel.example)).
    - `GET /api/v1/admin/runtime-config` debe mostrar `gth_mysql_enabled: true` y host/puerto.
    - `GET /api/v1/admin/runtime-config/gth-mysql/probe` debe responder `ok: true`.
-   - Tras el primer deploy con la migración de sync, ejecutar backfill en el contenedor API: `npm run sync:gth-photos-mysql`.
+   - Backfill fotos existentes: `POST /api/v1/admin/runtime-config/gth-mysql/sync` (admin) o `npm run sync:gth-photos-mysql` en el contenedor API.
    - Subir una foto nueva en Altas GTH y verificar fila en `gth_fotos` (cedula_digits + BLOB).
 
 ## 5) Webhooks de despliegue manual (Git push → panel)

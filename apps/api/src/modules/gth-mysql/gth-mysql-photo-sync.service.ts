@@ -5,6 +5,7 @@ import { GthHostingerMysqlService } from './gth-hostinger-mysql.service';
 import { buildGthMysqlPhotoRow } from './gth-mysql-photo-row.util';
 
 const PENDING_BATCH_SIZE = 50;
+const BACKFILL_BATCH_SIZE = 25;
 
 @Injectable()
 export class GthMysqlPhotoSyncService {
@@ -106,6 +107,54 @@ export class GthMysqlPhotoSyncService {
       this.logger.log(`MySQL retry batch: ${ok} ok, ${failed} failed`);
     }
     return { ok, failed };
+  }
+
+  /** Copia todas las fotos con photo_data en Postgres hacia MySQL (backfill admin). */
+  async backfillAll(): Promise<{
+    ok: number;
+    skipped: number;
+    failed: number;
+    total: number;
+    photo_count: number | null;
+  }> {
+    if (!this.mysql.isConfigured()) {
+      return { ok: 0, skipped: 0, failed: 0, total: 0, photo_count: null };
+    }
+
+    let cursor: string | undefined;
+    let total = 0;
+    let ok = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (;;) {
+      const rows = await this.prisma.gthComunicacionesRecord.findMany({
+        where: { photoSizeBytes: { gt: 0 } },
+        orderBy: { id: 'asc' },
+        take: BACKFILL_BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        total += 1;
+        const success = await this.syncRecord(row);
+        if (success) {
+          ok += 1;
+        } else {
+          const built = buildGthMysqlPhotoRow(row);
+          if (!built.ok) skipped += 1;
+          else failed += 1;
+        }
+      }
+
+      cursor = rows[rows.length - 1]?.id;
+      if (rows.length < BACKFILL_BATCH_SIZE) break;
+    }
+
+    const photo_count = await this.mysql.countPhotos();
+    this.logger.log(`MySQL backfill: ${ok} ok, ${skipped} skipped, ${failed} failed (${total} processed)`);
+    return { ok, skipped, failed, total, photo_count };
   }
 
   private async markFailure(recordId: string, error: string, attempts: number): Promise<void> {

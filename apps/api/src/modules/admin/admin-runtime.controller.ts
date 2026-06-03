@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { Roles } from '../../common/auth/roles.decorator';
@@ -6,6 +6,7 @@ import { RolesGuard } from '../../common/auth/roles.guard';
 import { getBuildMetadata } from '../../common/runtime/runtime-metadata';
 import { StorageService } from '../storage/storage.service';
 import { GthHostingerMysqlService } from '../gth-mysql/gth-hostinger-mysql.service';
+import { GthMysqlPhotoSyncService } from '../gth-mysql/gth-mysql-photo-sync.service';
 
 /**
  * Valores efectivos no secretos (solo lectura). Secretos nunca se exponen aquí.
@@ -19,6 +20,7 @@ export class AdminRuntimeController {
   constructor(
     private readonly storage: StorageService,
     private readonly gthMysql: GthHostingerMysqlService,
+    private readonly gthMysqlSync: GthMysqlPhotoSyncService,
   ) {}
 
   @Get()
@@ -71,6 +73,30 @@ export class AdminRuntimeController {
     const ping = await this.gthMysql.ping();
     const count = ping.ok ? await this.gthMysql.countPhotos() : null;
     return { ...info, ok: ping.ok, error: ping.error ?? null, photo_count: count };
+  }
+
+  @Post('gth-mysql/sync')
+  @ApiOperation({ summary: 'Backfill: copiar fotos GTH desde Postgres hacia MySQL Hostinger' })
+  async syncGthMysqlPhotos() {
+    const info = this.gthMysql.getRuntimeInfo();
+    if (!info.gth_mysql_enabled) {
+      return { ...info, ok: false, error: 'GTH MySQL no configurado' };
+    }
+    const ping = await this.gthMysql.ping();
+    if (!ping.ok) {
+      return { ...info, ok: false, error: ping.error ?? 'MySQL no accesible' };
+    }
+    const result = await this.gthMysqlSync.backfillAll();
+    return {
+      ...info,
+      ok: true,
+      error: null,
+      synced: result.ok,
+      skipped: result.skipped,
+      failed: result.failed,
+      total: result.total,
+      photo_count: result.photo_count,
+    };
   }
 
   @Get('storage')

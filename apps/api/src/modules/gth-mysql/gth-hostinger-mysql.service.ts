@@ -25,6 +25,10 @@ export class GthHostingerMysqlService implements OnModuleDestroy {
         enableKeepAlive: true,
       });
       this.logger.log(`MySQL GTH habilitado (${this.config.host}:${this.config.port}/${this.config.database})`);
+    } else if (process.env.GTH_MYSQL_ENABLED === 'true') {
+      this.logger.warn(
+        'GTH_MYSQL_ENABLED=true pero falta host, database, user o password — réplica MySQL desactivada',
+      );
     }
   }
 
