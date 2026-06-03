@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import * as path from 'path';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuditModule } from './common/audit/audit.module';
@@ -17,6 +18,7 @@ import { SlaModule } from './modules/sla/sla.module';
 import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { DepartmentUsersModule } from './modules/department-users/department-users.module';
+import { GthMysqlModule } from './modules/gth-mysql/gth-mysql.module';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { DepartmentUsersModule } from './modules/department-users/department-use
       /** Siempre `apps/api/.env` aunque el proceso se lance con cwd en la raíz del monorepo (p. ej. INTEGRATIONS_ENCRYPTION_KEY). */
       envFilePath: path.join(__dirname, '..', '.env'),
     }),
+    ScheduleModule.forRoot(),
     AuditModule,
     AdminModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
@@ -39,6 +42,7 @@ import { DepartmentUsersModule } from './modules/department-users/department-use
     ChatModule,
     InventoryModule,
     DepartmentUsersModule,
+    GthMysqlModule,
   ],
   controllers: [RootController, HealthController],
 })

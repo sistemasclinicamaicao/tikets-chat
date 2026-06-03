@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import type { UserPayload } from '../../common/auth/jwt-user.payload';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { GthMysqlPhotoSyncService } from '../gth-mysql/gth-mysql-photo-sync.service';
 import type { GthIncomingRow } from './admin-gth-directory.service';
 import {
   buildGthEmployeeFullName,
@@ -85,6 +87,7 @@ export class AdminGthComunicacionesRecordsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly gthMysqlSync: GthMysqlPhotoSyncService,
   ) {}
 
   private comunicacionesDepartmentName(): string {
@@ -423,6 +426,53 @@ export class AdminGthComunicacionesRecordsService {
 
     await this.purgeLegacyPhotoAttachment(previousAttachmentId, previousStorageKey);
 
+    void this.gthMysqlSync.syncRecord(updated).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`MySQL photo sync enqueue failed for ${recordId}: ${message}`);
+    });
+
+    return this.toRecordRow(updated);
+  }
+
+  async deletePhoto(recordId: string): Promise<GthComunicacionesRecordRow> {
+    const record = await this.prisma.gthComunicacionesRecord.findUnique({
+      where: { id: recordId },
+      include: { photoAttachment: true },
+    });
+    if (!record) throw new NotFoundException('Registro GTH no encontrado');
+    if (!this.recordHasPhoto(record)) {
+      throw new NotFoundException('Fotografía no encontrada');
+    }
+
+    const previousAttachmentId = record.photoAttachmentId;
+    const previousStorageKey = record.photoAttachment?.storageKey ?? null;
+
+    const updated = await this.prisma.gthComunicacionesRecord.update({
+      where: { id: recordId },
+      data: {
+        photoData: null,
+        photoMimeType: null,
+        photoFileName: null,
+        photoSizeBytes: null,
+        photoAttachmentId: null,
+        photoUploadedAt: null,
+        photoUploadedByUserId: null,
+        mysqlPhotoSyncedAt: null,
+        mysqlPhotoSyncLastError: null,
+        mysqlPhotoSyncAttempts: 0,
+      },
+      include: {
+        photoAttachment: { select: { id: true, mimeType: true } },
+      },
+    });
+
+    await this.purgeLegacyPhotoAttachment(previousAttachmentId, previousStorageKey);
+
+    void this.gthMysqlSync.deleteRecordPhoto(record).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`MySQL photo delete enqueue failed for ${recordId}: ${message}`);
+    });
+
     return this.toRecordRow(updated);
   }
 
@@ -553,6 +603,7 @@ export class AdminGthComunicacionesRecordsService {
         originalName: record.photoAttachment.originalName,
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.error(`GTH record photo read failed for ${recordId}: ${reason}`);
       throw new ServiceUnavailableException('No se pudo leer la fotografía.');

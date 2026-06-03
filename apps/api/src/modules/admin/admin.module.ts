@@ -15,9 +15,10 @@ import { AdminUsersService } from './admin-users.service';
 import { AdminWorkflowsController } from './admin-workflows.controller';
 import { AdminWorkflowsService } from './admin-workflows.service';
 import { ComunicacionesController } from './comunicaciones.controller';
+import { GthMysqlModule } from '../gth-mysql/gth-mysql.module';
 
 @Module({
-  imports: [],
+  imports: [GthMysqlModule],
   controllers: [
     AdminCatalogController,
     AdminWorkflowsController,

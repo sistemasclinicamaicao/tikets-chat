@@ -211,6 +211,9 @@ model GthComunicacionesRecord {
   photoSizeBytes        Int?        @map("photo_size_bytes")
   photoUploadedAt       DateTime?   @map("photo_uploaded_at")
   photoUploadedByUserId String?     @map("photo_uploaded_by_user_id")
+  mysqlPhotoSyncedAt    DateTime?   @map("mysql_photo_synced_at")
+  mysqlPhotoSyncAttempts Int        @default(0) @map("mysql_photo_sync_attempts")
+  mysqlPhotoSyncLastError String?   @map("mysql_photo_sync_last_error") @db.VarChar(500)
   lastSyncedAt          DateTime    @default(now()) @map("last_synced_at")
   createdAt             DateTime    @default(now()) @map("created_at")
   updatedAt             DateTime    @updatedAt @map("updated_at")
@@ -220,6 +223,7 @@ model GthComunicacionesRecord {
   @@index([documentId])
   @@index([isActive])
   @@index([lastSyncedAt])
+  @@index([mysqlPhotoSyncedAt, photoUploadedAt], map: "gth_comunicaciones_records_mysql_photo_sync_idx")
   @@map("gth_comunicaciones_records")
 }
 

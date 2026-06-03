@@ -30,6 +30,7 @@
     "backfill:gth-photos-to-db": "ts-node -r tsconfig-paths/register prisma/backfill-gth-photos-to-db.ts",
     "export:gth-fotos-html": "ts-node -r tsconfig-paths/register prisma/export-gth-photos-html.ts",
     "clear:gth-comunicaciones-photos": "ts-node -r tsconfig-paths/register prisma/clear-gth-comunicaciones-photos.ts",
+    "sync:gth-photos-mysql": "ts-node -r tsconfig-paths/register prisma/sync-gth-photos-to-mysql.ts",
     "seed:inventory": "ts-node -r tsconfig-paths/register prisma/seed-inventory-sistemas.ts"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.19",
     "@nestjs/platform-socket.io": "^11.1.19",
+    "@nestjs/schedule": "^6.0.1",
     "@nestjs/swagger": "^11.4.2",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.19",
@@ -50,6 +52,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
     "firebase-admin": "^12.7.0",
+    "mysql2": "^3.14.1",
     "nodemailer": "^8.0.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

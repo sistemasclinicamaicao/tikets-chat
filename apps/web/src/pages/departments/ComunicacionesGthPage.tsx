@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ApiError,
+  deleteGthComunicacionesPhoto,
   fetchGthComunicacionesFilterOptions,
   fetchGthComunicacionesRecords,
   filterDepartmentsForInventory,
@@ -13,6 +14,7 @@ import {
   type GthComunicacionesRecordRow,
   type TicketDepartmentOption,
 } from '../../lib/api';
+import { isRootUser } from '../../lib/rootUser';
 import { ClinicaDefaultPhotoImg } from '../../components/ClinicaDefaultPhotoImg';
 import { GthPhotoOnlyModal } from './GthPhotoOnlyModal';
 import { GthPhotoUploadErrorModal } from './GthPhotoUploadErrorModal';
@@ -35,12 +37,15 @@ function formatDate(iso: string | null): string {
 type RowUploadProps = {
   departmentId: string;
   row: GthComunicacionesRecordRow;
+  canDeletePhoto: boolean;
   onUploaded: (row: GthComunicacionesRecordRow) => void;
+  onDeleted: (row: GthComunicacionesRecordRow) => void;
 };
 
-function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
+function RowPhotoUpload({ departmentId, row, canDeletePhoto, onUploaded, onDeleted }: RowUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<GthComunicacionesRecordRow | null>(null);
   const [uploadError, setUploadError] = useState<{ message: string } | null>(null);
 
@@ -67,44 +72,94 @@ function RowPhotoUpload({ departmentId, row, onUploaded }: RowUploadProps) {
     }
   }
 
+  async function onDeletePhoto() {
+    if (!canDeletePhoto || !row.has_photo || deleting || busy) return;
+    const label = row.document_display ?? row.document_id ?? row.full_name;
+    if (
+      !window.confirm(
+        `¿Eliminar la fotografía de ${row.full_name}${label ? ` (${label})` : ''}? Esta acción no se puede deshacer.`,
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setUploadError(null);
+    try {
+      const updated = await deleteGthComunicacionesPhoto(departmentId, row.id);
+      onDeleted(updated);
+    } catch (e) {
+      const message =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'No se pudo eliminar la fotografía';
+      setUploadError({ message });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const uploadLabel = row.has_photo ? 'Cambiar fotografía' : 'Subir fotografía';
+  const rowBusy = busy || deleting;
 
   return (
-    <div className="gth-record-photo-cell">
+    <div
+      className={`gth-record-photo-cell${canDeletePhoto ? ' gth-record-photo-cell--with-delete' : ''}`}
+    >
       {row.has_photo ? (
         <span
-          className="gth-onboarding-thumb gth-onboarding-thumb--registered"
+          className="inventory-icon-btn inventory-icon-btn--photo-registered"
           title="Ver fotografía"
           aria-hidden="true"
         >
           <i className="ti ti-user-check" />
         </span>
       ) : (
-        <ClinicaDefaultPhotoImg title="Sin fotografía — logo institucional" />
+        <span className="inventory-icon-btn inventory-icon-btn--photo-empty" aria-hidden="true">
+          <ClinicaDefaultPhotoImg title="Sin fotografía — logo institucional" />
+        </span>
       )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="sr-only"
-        id={`gth-photo-${row.id}`}
-        disabled={busy}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => void onFileChange(e.target.files?.[0])}
-      />
       <label
-        htmlFor={`gth-photo-${row.id}`}
         className="inventory-icon-btn"
-        title={busy ? 'Subiendo…' : uploadLabel}
-        aria-label={busy ? 'Subiendo fotografía' : uploadLabel}
+        title={rowBusy ? 'Procesando…' : uploadLabel}
+        aria-label={rowBusy ? 'Procesando fotografía' : uploadLabel}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          disabled={rowBusy}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => void onFileChange(e.target.files?.[0])}
+        />
         <i
-          className={`ti ${busy ? 'ti-loader' : row.has_photo ? 'ti-photo-edit' : 'ti-upload'}`}
+          className={`ti ${rowBusy ? 'ti-loader' : row.has_photo ? 'ti-photo-edit' : 'ti-upload'}`}
           aria-hidden="true"
         />
       </label>
+      {canDeletePhoto ? (
+        row.has_photo ? (
+          <button
+            type="button"
+            className="inventory-icon-btn inventory-icon-btn--danger"
+            title={deleting ? 'Eliminando…' : 'Eliminar fotografía'}
+            aria-label={deleting ? 'Eliminando fotografía' : 'Eliminar fotografía'}
+            disabled={rowBusy}
+            onClick={(e) => {
+              e.stopPropagation();
+              void onDeletePhoto();
+            }}
+          >
+            <i className={`ti ${deleting ? 'ti-loader' : 'ti-trash'}`} aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="inventory-icon-btn gth-record-photo-cell__slot--empty" aria-hidden="true" />
+        )
+      ) : null}
       <GthPhotoUploadSuccessModal
         open={uploadSuccess !== null}
         fullName={uploadSuccess?.full_name ?? row.full_name}
@@ -153,6 +208,7 @@ export function ComunicacionesGthPage() {
   );
 
   const isAdmin = profile?.global_role === 'admin';
+  const isRoot = isRootUser(profile);
 
   useEffect(() => {
     void getCurrentUserProfile()
@@ -246,6 +302,11 @@ export function ComunicacionesGthPage() {
 
   function onRowUploaded(updated: GthComunicacionesRecordRow) {
     setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
+
+  function onRowDeleted(updated: GthComunicacionesRecordRow) {
+    setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    setPhotoPreview((prev) => (prev?.recordId === updated.id ? null : prev));
   }
 
   function openPhotoPreview(record: GthComunicacionesRecordRow) {
@@ -430,7 +491,9 @@ export function ComunicacionesGthPage() {
                     <RowPhotoUpload
                       departmentId={departmentId}
                       row={row}
+                      canDeletePhoto={isRoot}
                       onUploaded={onRowUploaded}
+                      onDeleted={onRowDeleted}
                     />
                   </td>
                   <td>{row.has_photo ? formatDate(row.photo_uploaded_at) : '—'}</td>

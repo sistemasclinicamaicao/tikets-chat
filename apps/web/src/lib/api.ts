@@ -1011,6 +1011,13 @@ export async function uploadGthComunicacionesPhoto(
   return (await response.json()) as GthComunicacionesRecordRow;
 }
 
+export async function deleteGthComunicacionesPhoto(departmentId: string, recordId: string) {
+  return request<GthComunicacionesRecordRow>(
+    `/comunicaciones/gth-records/${encodeURIComponent(recordId)}/photo?departmentId=${encodeURIComponent(departmentId)}`,
+    'DELETE',
+  );
+}
+
 export function getChatChannels() {
   return request<ChatChannel[]>('/chat/channels', 'GET');
 }

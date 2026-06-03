@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -9,6 +10,7 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -16,6 +18,7 @@ import type { Response } from 'express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import type { UserPayload } from '../../common/auth/jwt-user.payload';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
+import { isRootUser } from '../../common/auth/root-user.util';
 import { assertInventoryDepartmentAccess } from '../inventory/inventory-access';
 import { AdminGthComunicacionesRecordsService } from './admin-gth-comunicaciones-records.service';
 
@@ -117,6 +120,23 @@ export class ComunicacionesController {
       },
       user,
     );
+  }
+
+  @Delete('gth-records/:recordId/photo')
+  @ApiOperation({ summary: 'Eliminar fotografía GTH (solo usuario root)' })
+  deleteGthRecordPhoto(
+    @Param('recordId') recordId: string,
+    @Query('departmentId') departmentId: string,
+    @CurrentUser() user: UserPayload,
+  ) {
+    if (!isRootUser(user)) {
+      throw new ForbiddenException('Solo el usuario root puede eliminar fotografías GTH');
+    }
+    if (!departmentId?.trim()) {
+      throw new BadRequestException('departmentId requerido');
+    }
+    assertInventoryDepartmentAccess(user, departmentId.trim());
+    return this.gthRecords.deletePhoto(recordId);
   }
 
   @Get('gth-records/:recordId/photo/content')

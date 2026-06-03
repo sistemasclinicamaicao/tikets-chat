@@ -5,6 +5,7 @@ import { Roles } from '../../common/auth/roles.decorator';
 import { RolesGuard } from '../../common/auth/roles.guard';
 import { getBuildMetadata } from '../../common/runtime/runtime-metadata';
 import { StorageService } from '../storage/storage.service';
+import { GthHostingerMysqlService } from '../gth-mysql/gth-hostinger-mysql.service';
 
 /**
  * Valores efectivos no secretos (solo lectura). Secretos nunca se exponen aquí.
@@ -15,7 +16,10 @@ import { StorageService } from '../storage/storage.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class AdminRuntimeController {
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly gthMysql: GthHostingerMysqlService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Parámetros de entorno visibles (sin secretos)' })
@@ -53,7 +57,20 @@ export class AdminRuntimeController {
       storage_max_attempts: storageInfo.max_attempts,
       storage_connect_timeout_ms: storageInfo.connect_timeout_ms,
       storage_socket_timeout_ms: storageInfo.socket_timeout_ms,
+      ...this.gthMysql.getRuntimeInfo(),
     };
+  }
+
+  @Get('gth-mysql/probe')
+  @ApiOperation({ summary: 'Prueba de conectividad API -> MySQL Hostinger (GTH fotos)' })
+  async probeGthMysql() {
+    const info = this.gthMysql.getRuntimeInfo();
+    if (!info.gth_mysql_enabled) {
+      return { ...info, ok: false, error: 'GTH MySQL no configurado' };
+    }
+    const ping = await this.gthMysql.ping();
+    const count = ping.ok ? await this.gthMysql.countPhotos() : null;
+    return { ...info, ok: ping.ok, error: ping.error ?? null, photo_count: count };
   }
 
   @Get('storage')

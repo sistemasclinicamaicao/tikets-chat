@@ -78,6 +78,14 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
 6. Diagnóstico admin de storage:
    - `GET /api/v1/admin/runtime-config` debe reflejar el `storage_endpoint`, `storage_hostname`, `storage_protocol` y `storage_tls_relaxed` esperados;
    - `GET /api/v1/admin/runtime-config/storage/probe` debe confirmar `tcp.ok=true` y, si usas HTTPS con certificado no confiable, te mostrará si el fallo está en `tls` o en `bucket_head`.
+7. Réplica fotos GTH → MySQL Hostinger (si `GTH_MYSQL_ENABLED=true`):
+   - Crear tabla con [`infrastructure/mysql/gth_fotos.sql`](infrastructure/mysql/gth_fotos.sql) en phpMyAdmin.
+   - Remote MySQL en Hostinger: whitelist IP EasyPanel `179.60.240.86`.
+   - Variables en el servicio API: `GTH_MYSQL_HOST`, `GTH_MYSQL_DATABASE`, `GTH_MYSQL_USER`, `GTH_MYSQL_PASSWORD`, etc. (ver [`.env.easypanel.example`](.env.easypanel.example)).
+   - `GET /api/v1/admin/runtime-config` debe mostrar `gth_mysql_enabled: true` y host/puerto.
+   - `GET /api/v1/admin/runtime-config/gth-mysql/probe` debe responder `ok: true`.
+   - Tras el primer deploy con la migración de sync, ejecutar backfill en el contenedor API: `npm run sync:gth-photos-mysql`.
+   - Subir una foto nueva en Altas GTH y verificar fila en `gth_fotos` (cedula_digits + BLOB).
 
 ## 5) Webhooks de despliegue manual (Git push → panel)
 
