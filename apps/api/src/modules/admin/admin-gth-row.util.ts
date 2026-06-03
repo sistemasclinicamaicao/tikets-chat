@@ -239,29 +239,32 @@ export function pickGthEstadoLabel(row: Record<string, unknown>): string {
   return resolveGthFieldValue(row, 'ESTADO') || '—';
 }
 
+const GTH_DISPLAY_TIMEZONE = 'America/Bogota';
+
+const gthFingresoFormatOptions: Intl.DateTimeFormatOptions = {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: GTH_DISPLAY_TIMEZONE,
+};
+
 /** Fecha de ingreso (FINGRESO) formateada para listados. */
 export function formatGthFingresoDisplay(raw: string): string {
   const s = raw.trim();
   if (!s) return '—';
   const iso = Date.parse(s);
   if (!Number.isNaN(iso)) {
-    return new Date(iso).toLocaleDateString('es-CO', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+    return new Date(iso).toLocaleDateString('es-CO', gthFingresoFormatOptions);
   }
   const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
   if (m) {
     let year = Number(m[3]);
     if (year < 100) year += year < 50 ? 2000 : 1900;
-    const d = new Date(year, Number(m[2]) - 1, Number(m[1]));
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
     if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
+      return d.toLocaleDateString('es-CO', gthFingresoFormatOptions);
     }
   }
   return s;
@@ -269,6 +272,38 @@ export function formatGthFingresoDisplay(raw: string): string {
 
 export function pickGthFingreso(row: Record<string, unknown>): string {
   return formatGthFingresoDisplay(resolveGthFieldValue(row, 'FINGRESO'));
+}
+
+/** Extensión de archivo para fotos GTH según MIME o nombre original. */
+export function gthPhotoExtensionFromMime(mimetype: string, originalName?: string): string {
+  const mime = mimetype.toLowerCase().split(';')[0]?.trim() ?? '';
+  const byMime: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
+  };
+  if (byMime[mime]) return byMime[mime];
+  const fromName = originalName?.trim().match(/\.([a-z0-9]{2,5})$/i);
+  if (fromName) return fromName[1].toLowerCase();
+  return 'jpg';
+}
+
+/** Nombre de archivo estándar: cédula (solo dígitos) + extensión, p. ej. 1067896086.jpg */
+export function buildGthPhotoFileName(
+  documentId: string | null | undefined,
+  mimetype: string,
+  originalName?: string,
+): string {
+  const cedula = documentId ? normalizeGthDocumentId(documentId) : '';
+  const ext = gthPhotoExtensionFromMime(mimetype, originalName);
+  if (cedula) return `${cedula}.${ext}`.slice(0, 255);
+  const fallback = originalName?.trim() || `foto-gth.${ext}`;
+  return fallback.slice(0, 255);
 }
 
 const FULL_NAME_FALLBACK_FIELDS = [

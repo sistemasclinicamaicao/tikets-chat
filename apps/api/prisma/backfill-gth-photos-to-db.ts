@@ -5,6 +5,7 @@
 import { DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { PrismaClient } from '@prisma/client';
+import { buildGthPhotoFileName } from '../src/modules/admin/admin-gth-row.util';
 import * as https from 'https';
 
 const prisma = new PrismaClient();
@@ -138,7 +139,11 @@ async function main() {
         data: {
           photoData: Uint8Array.from(buffer),
           photoMimeType: att.mimeType.slice(0, 127),
-          photoFileName: att.originalName.slice(0, 255),
+          photoFileName: buildGthPhotoFileName(
+            row.documentId,
+            att.mimeType,
+            att.originalName,
+          ),
           photoSizeBytes: att.sizeBytes,
           photoAttachmentId: null,
         },

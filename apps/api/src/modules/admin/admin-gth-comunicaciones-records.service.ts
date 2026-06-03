@@ -16,6 +16,7 @@ import {
   buildGthEmployeeFullName,
   buildGthEmployeeSnapshot,
   buildGthPayloadSearchText,
+  buildGthPhotoFileName,
   isGthEmployeeActiveByEstado,
   normalizeGthDocumentId,
   pickGthDocumentId,
@@ -405,6 +406,10 @@ export class AdminGthComunicacionesRecordsService {
     });
     if (!record) throw new NotFoundException('Registro GTH no encontrado');
 
+    const payload = (record.payload ?? {}) as Record<string, unknown>;
+    const documentId = pickGthDocumentId(payload) ?? record.documentId;
+    const photoFileName = buildGthPhotoFileName(documentId, file.mimetype, file.originalname);
+
     const previousAttachmentId = record.photoAttachmentId;
     const previousStorageKey = record.photoAttachment?.storageKey ?? null;
 
@@ -413,7 +418,7 @@ export class AdminGthComunicacionesRecordsService {
       data: {
         photoData: Uint8Array.from(file.buffer),
         photoMimeType: file.mimetype.slice(0, 127),
-        photoFileName: file.originalname.slice(0, 255),
+        photoFileName,
         photoSizeBytes: file.size,
         photoAttachmentId: null,
         photoUploadedAt: new Date(),
