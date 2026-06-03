@@ -74,20 +74,20 @@ function formatSyncSummary(sync: {
     parts.push(
       `usuarios login: ${sync.users_created ?? 0} creado(s), ${sync.users_updated ?? 0} actualizado(s)`,
     );
-    if (sync.users_skipped) parts.push(`${sync.users_skipped} sin cédula en GTH`);
+    if (sync.users_skipped) parts.push(`${sync.users_skipped} sin documento en GTH`);
   }
   if (typeof sync.records_upserted === 'number') {
     parts.push(`${sync.records_upserted} en Comunicaciones`);
   }
   if (sync.added_without_document > 0) {
-    parts.push(`${sync.added_without_document} sin cédula`);
+    parts.push(`${sync.added_without_document} sin documento`);
   }
   const ids = sync.added_document_ids.slice(0, PREVIEW_NEW_IDS);
   if (ids.length > 0) {
     const more = sync.added_document_ids.length - ids.length;
     const list = ids.join(', ');
     parts.push(
-      more > 0 ? `cédulas nuevas: ${list} (+${more} más)` : `cédulas nuevas: ${list}`,
+      more > 0 ? `documentos nuevos: ${list} (+${more} más)` : `documentos nuevos: ${list}`,
     );
   }
   return parts.join(' · ');
@@ -261,7 +261,7 @@ export function SettingsUsersGthPane() {
           <input
             type="search"
             className="chat-input settings-gth__search"
-            placeholder="Buscar…"
+            placeholder="Buscar nombre, documento, cargo…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             disabled={loading}

@@ -14,6 +14,7 @@ import {
 } from '../../common/auth/department-access.util';
 import { DEPARTMENT_ROLES, type UserPayload } from '../../common/auth/jwt-user.payload';
 import { PrismaService } from '../../prisma/prisma.service';
+import { mapEmployeeIdsToDocumentDisplay } from '../admin/admin-gth-document-lookup.util';
 import { UpsertDepartmentUserDto } from './dto/upsert-department-user.dto';
 
 function mapMemberRow(
@@ -26,10 +27,12 @@ function mapMemberRow(
     };
     role: string;
   },
+  displayMap: Map<string, string>,
 ) {
   return {
     user_id: row.user.id,
     employee_id: row.user.employeeId,
+    employee_document_display: displayMap.get(row.user.employeeId) ?? row.user.employeeId,
     name: row.user.name,
     is_active: row.user.isActive,
     role: row.role,
@@ -101,9 +104,14 @@ export class DepartmentUsersService {
       },
     });
 
+    const displayMap = await mapEmployeeIdsToDocumentDisplay(
+      this.prisma,
+      rows.map((r) => r.user.employeeId),
+    );
+
     return {
       department_id: departmentId,
-      items: rows.map(mapMemberRow),
+      items: rows.map((row) => mapMemberRow(row, displayMap)),
     };
   }
 
@@ -137,11 +145,17 @@ export class DepartmentUsersService {
       select: { id: true, employeeId: true, name: true },
     });
 
+    const displayMap = await mapEmployeeIdsToDocumentDisplay(
+      this.prisma,
+      users.map((u) => u.employeeId),
+    );
+
     return {
       department_id: departmentId,
       items: users.map((u) => ({
         user_id: u.id,
         employee_id: u.employeeId,
+        employee_document_display: displayMap.get(u.employeeId) ?? u.employeeId,
         name: u.name,
         in_department: existingByUser.has(u.id),
         current_role: existingByUser.get(u.id) ?? null,
@@ -210,7 +224,9 @@ export class DepartmentUsersService {
       meta: { role: dto.role, previous_role: existing?.role ?? null },
     });
 
-    return mapMemberRow(row);
+    const displayMap = await mapEmployeeIdsToDocumentDisplay(this.prisma, [row.user.employeeId]);
+
+    return mapMemberRow(row, displayMap);
   }
 
   async removeMember(departmentId: string, targetUserId: string, actor: UserPayload) {

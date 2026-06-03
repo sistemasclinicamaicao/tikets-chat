@@ -11,6 +11,7 @@ import { SetUserDepartmentRolesDto } from './dto/set-user-department-roles.dto';
 import { UpdateUserGlobalRoleDto } from './dto/update-user-global-role.dto';
 import { isAssignableDepartmentRole } from '../../common/auth/department-access.util';
 import { GLOBAL_ROLES } from '../../common/auth/jwt-user.payload';
+import { mapEmployeeIdsToDocumentDisplay } from './admin-gth-document-lookup.util';
 
 const ALLOWED_GLOBAL = new Set<string>([
   GLOBAL_ROLES.ADMIN,
@@ -93,10 +94,16 @@ export class AdminUsersService {
         this.prisma.user.count({ where: { isActive: false } }),
       ]);
 
+    const displayMap = await mapEmployeeIdsToDocumentDisplay(
+      this.prisma,
+      rows.map((u) => u.employeeId),
+    );
+
     return {
       items: rows.map((u) => ({
         id: u.id,
         employee_id: u.employeeId,
+        employee_document_display: displayMap.get(u.employeeId) ?? u.employeeId,
         name: u.name,
         email: u.email,
         is_active: u.isActive,

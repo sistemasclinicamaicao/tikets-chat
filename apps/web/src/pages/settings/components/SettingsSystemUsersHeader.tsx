@@ -41,7 +41,7 @@ export function SettingsSystemUsersHeader({ summary }: Props) {
         ) : null}
       </div>
       <p className="settings-system-users__subtitle">
-        El inicio de sesión (OTP) solo admite cédulas de esta tabla. Los datos de nombre y correo se
+        El inicio de sesión (OTP) solo admite documentos registrados en esta tabla. Los datos de nombre y correo se
         actualizan al sincronizar GTH en{' '}
         <Link to="/settings?tab=users&amp;users_sub=gth">Configuración → GTH</Link>. Roles por
         departamento en <Link to={DEPARTMENTS_BASE}>Departamentos → Gestión de usuarios</Link>.

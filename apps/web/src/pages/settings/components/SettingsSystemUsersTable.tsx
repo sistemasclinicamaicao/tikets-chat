@@ -1,4 +1,5 @@
 import type { AdminUserRow } from '../../../lib/api';
+import { formatEmployeeDocumentDisplay } from '../../settingsUsersGthFields';
 import { globalRoleBadgeVariant, globalRoleLabel } from '../../../lib/userRolesUi';
 import { selectableRowProps } from '../settingsUtils';
 
@@ -49,7 +50,7 @@ export function SettingsSystemUsersTable({
             <thead>
               <tr>
                 <th>Nombre</th>
-                <th>Cédula</th>
+                <th>DOCUMENTO</th>
                 <th>Correo</th>
                 <th>Rol global</th>
                 <th>Estado</th>
@@ -64,7 +65,7 @@ export function SettingsSystemUsersTable({
                     {...selectableRowProps(selectedId === u.id, () => onSelect(u))}
                   >
                     <td>{u.name}</td>
-                    <td>{u.employee_id}</td>
+                    <td>{formatEmployeeDocumentDisplay(u.employee_id, u.employee_document_display)}</td>
                     <td className="settings-system-users__email-cell" title={email || undefined}>
                       {email || '—'}
                     </td>

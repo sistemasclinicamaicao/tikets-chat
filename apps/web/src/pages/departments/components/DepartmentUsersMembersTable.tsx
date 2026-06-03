@@ -4,6 +4,7 @@ import {
   formatDepartmentRoleLabel,
   type DepartmentUserMember,
 } from '../../../lib/api';
+import { formatEmployeeDocumentDisplay } from '../../settingsUsersGthFields';
 import { departmentRoleBadgeVariant, departmentRoleLabel } from '../../../lib/userRolesUi';
 import { DepartmentUsersToast } from './DepartmentUsersToast';
 
@@ -46,7 +47,8 @@ export function DepartmentUsersMembersTable({
       if (!q) return true;
       return (
         m.name.toLowerCase().includes(q) ||
-        m.employee_id.toLowerCase().includes(q)
+        m.employee_id.toLowerCase().includes(q) ||
+        (m.employee_document_display ?? '').toLowerCase().includes(q)
       );
     });
   }, [members, filterQ, filterRole]);
@@ -76,7 +78,7 @@ export function DepartmentUsersMembersTable({
             <input
               type="search"
               className="inventory-toolbar__search"
-              placeholder="Buscar nombre o cédula…"
+              placeholder="Buscar nombre o documento…"
               value={filterQ}
               onChange={(e) => setFilterQ(e.target.value)}
               autoComplete="off"
@@ -125,7 +127,7 @@ export function DepartmentUsersMembersTable({
             <thead>
               <tr>
                 <th>Nombre</th>
-                <th>Cédula</th>
+                <th>DOCUMENTO</th>
                 <th>Rol</th>
                 <th>Estado</th>
                 <th aria-label="Acciones" />
@@ -138,7 +140,12 @@ export function DepartmentUsersMembersTable({
                 return (
                   <tr key={member.user_id} className={isBusy ? 'dept-users-row--busy' : undefined}>
                     <td>{member.name}</td>
-                    <td>{member.employee_id}</td>
+                    <td>
+                      {formatEmployeeDocumentDisplay(
+                        member.employee_id,
+                        member.employee_document_display,
+                      )}
+                    </td>
                     <td>
                       <div className="dept-users-role-cell">
                         <span

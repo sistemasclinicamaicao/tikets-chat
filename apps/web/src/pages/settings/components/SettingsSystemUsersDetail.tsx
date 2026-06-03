@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { avatarColorFor, initialsFromName } from '../../../components/MessengerLoginAvatar';
 import type { AdminUserRow } from '../../../lib/api';
+import { formatEmployeeDocumentDisplay } from '../../settingsUsersGthFields';
 import { globalRoleBadgeVariant, globalRoleLabel } from '../../../lib/userRolesUi';
 import { DEPARTMENTS_BASE } from '../../departments/departmentExperience';
 import { SettingsUsersToast } from '../SettingsUsersToast';
@@ -43,7 +44,10 @@ export function SettingsSystemUsersDetail({
           <h3>{selected.name}</h3>
           <p className="settings-muted">{selected.email ?? 'sin correo'}</p>
           <p className="settings-system-users__meta">
-            Cédula <strong>{selected.employee_id}</strong>
+            DOCUMENTO{' '}
+            <strong>
+              {formatEmployeeDocumentDisplay(selected.employee_id, selected.employee_document_display)}
+            </strong>
           </p>
         </div>
         <div className="settings-system-users__detail-badges">

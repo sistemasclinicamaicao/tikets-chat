@@ -1205,6 +1205,7 @@ export type AdminRuntimeConfig = {
 export type AdminUserRow = {
   id: string;
   employee_id: string;
+  employee_document_display?: string | null;
   name: string;
   email: string | null;
   is_active: boolean;
@@ -1558,6 +1559,7 @@ export function adminSetUserDepartmentRoles(userId: string, roles: DepartmentRol
 export type DepartmentUserMember = {
   user_id: string;
   employee_id: string;
+  employee_document_display?: string | null;
   name: string;
   is_active: boolean;
   role: string;
@@ -1566,6 +1568,7 @@ export type DepartmentUserMember = {
 export type DepartmentUserSearchHit = {
   user_id: string;
   employee_id: string;
+  employee_document_display?: string | null;
   name: string;
   in_department: boolean;
   current_role: string | null;

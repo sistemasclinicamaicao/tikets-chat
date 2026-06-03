@@ -35,7 +35,7 @@ export function SettingsSystemUsersToolbar({
           <input
             type="search"
             className="inventory-toolbar__search"
-            placeholder="Buscar nombre, cédula o correo…"
+            placeholder="Buscar nombre, documento o correo…"
             value={searchQ}
             onChange={(e) => onSearchChange(e.target.value)}
             autoComplete="off"

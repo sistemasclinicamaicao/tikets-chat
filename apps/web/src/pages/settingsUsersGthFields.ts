@@ -407,6 +407,17 @@ function isGthDocumentTypeColumn(col: string): boolean {
   return acceptedKeysForColumn('TIPO').has(normalizeGthFieldKey(col));
 }
 
+/** Valor visible de documento en tablas de usuarios (tipo + número desde GTH). */
+export function formatEmployeeDocumentDisplay(
+  employeeId: string | null | undefined,
+  documentDisplay?: string | null,
+): string {
+  const display = documentDisplay?.trim();
+  if (display) return display;
+  const id = employeeId?.trim();
+  return id || '—';
+}
+
 /** Etiqueta de columna en tablas GTH. */
 export function gthTableColumnLabel(col: string): string {
   if (isGthDocumentNumberColumn(col)) return 'DOCUMENTO';
@@ -519,7 +530,7 @@ export function buildGthRowDetailSections(
       if (!resolved.text) continue;
       markColumnCovered(coveredColumns, col, cols, resolved.sourceKey);
       fields.push({
-        label: col,
+        label: gthTableColumnLabel(col),
         value: resolved.text,
         sourceKey: resolved.sourceKey,
       });
@@ -537,7 +548,7 @@ export function buildGthRowDetailSections(
     const resolved = resolveGthCellValue(row, col);
     const value = resolved.text || '—';
     if (value === '—') continue;
-    otrosFields.push({ label: col, value, sourceKey: resolved.sourceKey });
+    otrosFields.push({ label: gthTableColumnLabel(col), value, sourceKey: resolved.sourceKey });
   }
 
   if (otrosFields.length > 0) {

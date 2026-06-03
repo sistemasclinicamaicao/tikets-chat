@@ -3,6 +3,7 @@ import {
   formatDepartmentRoleLabel,
   type DepartmentUserSearchHit,
 } from '../../../lib/api';
+import { formatEmployeeDocumentDisplay } from '../../settingsUsersGthFields';
 import { departmentRoleLabel } from '../../../lib/userRolesUi';
 import { DepartmentUsersToast } from './DepartmentUsersToast';
 
@@ -73,7 +74,7 @@ export function DepartmentUsersAddPanel({
             <input
               type="search"
               className="inventory-toolbar__search"
-              placeholder="Buscar nombre o cédula…"
+              placeholder="Buscar nombre o documento…"
               value={searchQ}
               onChange={(e) => onSearchChange(e.target.value)}
               autoComplete="off"
@@ -109,7 +110,7 @@ export function DepartmentUsersAddPanel({
             <thead>
               <tr>
                 <th>Nombre</th>
-                <th>Cédula</th>
+                <th>DOCUMENTO</th>
                 <th>En el dept.</th>
                 <th aria-label="Acción" />
               </tr>
@@ -118,7 +119,9 @@ export function DepartmentUsersAddPanel({
               {searchHits.map((hit) => (
                 <tr key={hit.user_id} className={rowBusy === hit.user_id ? 'dept-users-row--busy' : undefined}>
                   <td>{hit.name}</td>
-                  <td>{hit.employee_id}</td>
+                  <td>
+                    {formatEmployeeDocumentDisplay(hit.employee_id, hit.employee_document_display)}
+                  </td>
                   <td>
                     {hit.in_department ? (
                       <span className="inventory-badge inventory-badge--success">

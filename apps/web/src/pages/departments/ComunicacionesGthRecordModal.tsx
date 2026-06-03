@@ -393,7 +393,7 @@ export function ComunicacionesGthRecordModal({ open, departmentId, recordId, onC
               <dl className="gth-presentation-modal__summary">
                 <div className="gth-presentation-modal__summary-row">
                   <dt>DOCUMENTO</dt>
-                  <dd>{doc || detail.document_id || '—'}</dd>
+                  <dd>{doc || '—'}</dd>
                 </div>
                 <div className="gth-presentation-modal__summary-row">
                   <dt>Cargo</dt>
