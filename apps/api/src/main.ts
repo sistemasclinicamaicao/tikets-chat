@@ -4,6 +4,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { validationExceptionFactory } from './common/validation/validation-errors-i18n';
+import { readProductionSecurityConfig } from './common/runtime/production-security';
 import { AppModule } from './app.module';
 
 function parseLogLevels(): LogLevel[] {
@@ -16,9 +17,13 @@ function parseLogLevels(): LogLevel[] {
 }
 
 async function bootstrap() {
+  const security = readProductionSecurityConfig();
   const app = await NestFactory.create(AppModule, { logger: parseLogLevels() });
   app.useWebSocketAdapter(new IoAdapter(app));
-  app.enableCors({ origin: true, credentials: true });
+  app.enableCors({
+    origin: security.corsOrigins,
+    credentials: true,
+  });
   const apiPrefix = process.env.API_PREFIX ?? 'api/v1';
   app.setGlobalPrefix(apiPrefix, {
     exclude: [{ path: '/', method: RequestMethod.GET }],

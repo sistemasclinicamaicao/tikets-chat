@@ -26,6 +26,9 @@ Módulo para sincronizar el directorio GTH y registrar la **fotografía de prese
 - **`has_photo`:** verdadero solo si `photo_size_bytes > 0` o existe `photo_attachment_id` legacy con contenido.
 - **`photo_uploaded_at`:** se expone solo cuando `has_photo` es verdadero.
 - La imagen se guarda en PostgreSQL (`photo_data`), no en MinIO para registros nuevos de este módulo.
+- **`photo_file_name`:** `{cedula}.{ext}` (p. ej. `1067896086.jpg`).
+- **Listado:** columnas desnormalizadas `area`, `estado`, `tipo_contrato`, `fecha_ingreso` para filtros y paginación en BD (sin cargar `payload` completo).
+- **Subir foto:** requiere rol operativo en el departamento (`assertInventoryWriteAccess`); el auditor solo consulta.
 - Formatos: imágenes vía `multipart/form-data`, campo `file`.
 
 ### Endpoints (prefijo `/api/v1`)
@@ -37,7 +40,7 @@ Módulo para sincronizar el directorio GTH y registrar la **fotografía de prese
 | POST | `/comunicaciones/gth-records/:id/photo?departmentId=…` | Subir foto |
 | GET | `/comunicaciones/gth-records/:id/photo/content?departmentId=…` | Descargar imagen |
 
-Requiere JWT y acceso al departamento (o rol admin/auditor según política).
+Requiere JWT y acceso al departamento. **Subir foto:** admin global o rol operativo del área (técnico/supervisor/admin de departamento); el auditor solo consulta.
 
 ---
 

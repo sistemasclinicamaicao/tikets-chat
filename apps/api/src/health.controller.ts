@@ -1,5 +1,6 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service';
+import { isProductionNodeEnv } from './common/runtime/production-security';
 import { getBuildMetadata } from './common/runtime/runtime-metadata';
 import { StorageService } from './modules/storage/storage.service';
 
@@ -12,6 +13,13 @@ export class HealthController {
 
   @Get('health')
   health() {
+    if (isProductionNodeEnv()) {
+      return {
+        ok: true,
+        service: 'chat-tikets-api',
+        status: 'live',
+      };
+    }
     const storageInfo = this.storage.getRuntimeInfo();
     return {
       ok: true,

@@ -4,7 +4,8 @@
 
 1. Copia `.env.easypanel.example` a `.env.easypanel` (este nombre está en `.gitignore`; no sube secretos al repositorio).
 2. Ajusta secretos y dominios (`VITE_API_ORIGIN`, JWT, PostgreSQL, Redis, QuObjects/S3, correo OTP e `INTEGRATIONS_ENCRYPTION_KEY` si aplica).
-3. Para adjuntos de chat usa QuObjects externo, no un MinIO local dentro del compose:
+3. **Producción (obligatorio):** `NODE_ENV=production`, `JWT_SECRET`, `JWT_REFRESH_SECRET` (distintos de dev), `CORS_ORIGINS` con la URL del front (ver [`.env.easypanel.example`](.env.easypanel.example)).
+4. Para adjuntos de chat usa QuObjects externo, no un MinIO local dentro del compose:
    - define **una sola vez** `MINIO_ENDPOINT`;
    - si EasyPanel debe salir por la IP pública del QNAP, usa `MINIO_ENDPOINT=https://179.60.240.86:8010`;
    - `http://179.60.240.86:8010` fue rechazado en las pruebas (`socket hang up`), así que no uses `http` para QuObjects;
@@ -86,6 +87,12 @@ Tras desplegar, abre el dominio del front: debe cargar el SPA **Chat Tickets** y
    - `GET /api/v1/admin/runtime-config/gth-mysql/probe` debe responder `ok: true`.
    - Backfill fotos existentes: `POST /api/v1/admin/runtime-config/gth-mysql/sync` (admin) o `npm run sync:gth-photos-mysql` en el contenedor API.
    - Subir una foto nueva en Altas GTH y verificar fila en `gth_fotos` (cedula_digits + BLOB).
+8. Tras deploy con migración GTH listado (`20260607120000_gth_comunicaciones_list_columns`):
+   - En el contenedor API: `npx prisma migrate deploy` (debe aplicar la migración si la imagen es reciente).
+   - `npm run backfill:gth-list-columns` (usa `dist/`, ya incluido en la imagen).
+   - `npm run rename:gth-photo-filenames` (si aún no se ejecutó en prod).
+   - Si `migrate deploy` dice «No pending migrations» pero faltan columnas `area`/`estado`, la imagen desplegada es anterior: vuelva a desplegar la API desde `main` actualizado.
+   - Probar Altas GTH: filtros + paginación (25 filas por página, respuesta rápida).
 
 ## 5) Webhooks de despliegue manual (Git push → panel)
 

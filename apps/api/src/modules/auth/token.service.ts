@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import type { JwtUserPayload } from '../../common/auth/jwt-user.payload';
+import { getJwtSecrets } from '../../common/runtime/production-security';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -43,13 +44,11 @@ export class TokenService {
   async issueTokens(user: { id: string; employeeId: string; name: string }, deviceId?: string) {
     const payload = await this.buildJwtPayload(user.id, user.employeeId, user.name);
 
-    const accessSecret = process.env.JWT_SECRET ?? 'dev_jwt_secret';
+    const { accessSecret, refreshSecret } = getJwtSecrets();
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: accessSecret,
       expiresIn: this.parseExpiresInMinutes(process.env.JWT_ACCESS_EXPIRES_IN, 15),
     });
-
-    const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_change_me';
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
       expiresIn: this.parseExpiresInMinutes(process.env.JWT_REFRESH_EXPIRES_IN, 12 * 60),
@@ -71,7 +70,7 @@ export class TokenService {
   }
 
   async rotateRefreshToken(refreshToken: string, deviceId?: string) {
-    const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_change_me';
+    const { refreshSecret } = getJwtSecrets();
     let payload: JwtUserPayload;
     try {
       payload = await this.jwtService.verifyAsync<JwtUserPayload>(refreshToken, {
@@ -120,7 +119,7 @@ export class TokenService {
   }
 
   async revokeToken(refreshToken: string) {
-    const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_change_me';
+    const { refreshSecret } = getJwtSecrets();
     let payload: JwtUserPayload | null = null;
     try {
       payload = await this.jwtService.verifyAsync<JwtUserPayload>(refreshToken, {

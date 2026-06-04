@@ -1,5 +1,17 @@
 # Changelog — GTH Comunicaciones, roles y fotos (Junio 2026)
 
+## Remediación auditoría (2026-06-07)
+
+| Área | Cambio |
+|------|--------|
+| **Listado GTH** | Columnas `area`, `estado`, `tipo_contrato`, `fecha_ingreso`; paginación y filtros en PostgreSQL |
+| **Seguridad** | `CORS_ORIGINS` + JWT obligatorios en `NODE_ENV=production`; `GTH_MYSQL_ALLOW_ENSURE_SCHEMA` |
+| **Permisos** | Subir foto GTH requiere `assertInventoryWriteAccess` |
+| **Scripts** | `backfill:gth-list-columns`, `rename:gth-photo-filenames` |
+| **Tests** | `admin-gth-row.util.spec.ts`, `admin-gth-comunicaciones-records.service.spec.ts` |
+
+---
+
 Registro del trabajo en **Altas GTH (Comunicaciones)**, almacenamiento de fotografías en PostgreSQL, rol global `usuario_general` y mejoras de UX en login y despliegue.
 
 **Commit de referencia en `main`:** `c3dd871` — `feat: GTH Altas Comunicaciones, usuario_general y UX fotos`

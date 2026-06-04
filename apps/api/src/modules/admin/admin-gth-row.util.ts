@@ -351,11 +351,16 @@ export function formatGthDocumentDisplay(
 }
 
 export function buildGthEmployeeSnapshot(row: Record<string, unknown>) {
+  const cargo = resolveGthFieldValue(row, 'CARGO');
   return {
     documentId: pickGthDocumentId(row),
     documentType: pickGthDocumentType(row),
     fullName: buildGthEmployeeFullName(row),
-    cargo: resolveGthFieldValue(row, 'CARGO'),
+    cargo,
+    area: resolveGthFieldValue(row, 'AREA') || '—',
+    estado: pickGthEstadoLabel(row),
+    tipoContrato: resolveGthFieldValue(row, 'TIPOCONTRATO') || '—',
+    fechaIngreso: pickGthFingreso(row),
   };
 }
 

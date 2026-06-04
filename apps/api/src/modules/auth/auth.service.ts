@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +13,10 @@ import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { OtpService } from './otp.service';
 import { TokenService } from './token.service';
 import { PushNotificationsService } from '../push/push-notifications.service';
+import {
+  isAuthOtpBypassDisabled,
+  isProductionNodeEnv,
+} from '../../common/runtime/production-security';
 
 const DEFAULT_OTP_BYPASS_EMPLOYEE_IDS = ['910204052230'];
 
@@ -26,8 +30,22 @@ type UserForSession = {
 };
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
+
+  onModuleInit(): void {
+    if (!isProductionNodeEnv()) return;
+    if (isAuthOtpBypassDisabled()) {
+      this.logger.log('AUTH_OTP_BYPASS_DISABLED=true: bypass OTP desactivado en producción.');
+      return;
+    }
+    const extra = this.config.get<string>('AUTH_OTP_BYPASS_EMPLOYEE_IDS')?.trim();
+    if (extra || DEFAULT_OTP_BYPASS_EMPLOYEE_IDS.length > 0) {
+      this.logger.warn(
+        'Producción: bypass OTP activo para employee_id en lista. Use AUTH_OTP_BYPASS_DISABLED=true para desactivarlo.',
+      );
+    }
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -68,6 +86,7 @@ export class AuthService {
   }
 
   private isOtpBypassEmployee(employeeId: string): boolean {
+    if (isProductionNodeEnv() && isAuthOtpBypassDisabled()) return false;
     return this.getOtpBypassEmployeeIds().has(employeeId.trim());
   }
 

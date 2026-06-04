@@ -15,7 +15,6 @@ import type { GthIncomingRow } from './admin-gth-directory.service';
 import {
   buildGthEmployeeFullName,
   buildGthEmployeeSnapshot,
-  buildGthPayloadSearchText,
   buildGthPhotoFileName,
   isGthEmployeeActiveByEstado,
   normalizeGthDocumentId,
@@ -79,8 +78,6 @@ export type GthComunicacionesFilterOptions = {
   TIPOCONTRATO: string[];
 };
 
-const GTH_FILTER_FIELDS = ['AREA', 'ESTADO', 'CARGO', 'TIPOCONTRATO'] as const;
-
 @Injectable()
 export class AdminGthComunicacionesRecordsService {
   private readonly logger = new Logger(AdminGthComunicacionesRecordsService.name);
@@ -142,6 +139,10 @@ export class AdminGthComunicacionesRecordsService {
               documentId: row.documentId ?? snapshot.documentId,
               fullName: snapshot.fullName,
               cargo: snapshot.cargo ?? '',
+              area: snapshot.area,
+              estado: snapshot.estado,
+              tipoContrato: snapshot.tipoContrato,
+              fechaIngreso: snapshot.fechaIngreso,
               payload: row.payload,
               isActive,
               lastSyncedAt: syncedAt,
@@ -150,6 +151,10 @@ export class AdminGthComunicacionesRecordsService {
               documentId: row.documentId ?? snapshot.documentId,
               fullName: snapshot.fullName,
               cargo: snapshot.cargo ?? '',
+              area: snapshot.area,
+              estado: snapshot.estado,
+              tipoContrato: snapshot.tipoContrato,
+              fechaIngreso: snapshot.fechaIngreso,
               payload: row.payload,
               isActive,
               lastSyncedAt: syncedAt,
@@ -162,78 +167,102 @@ export class AdminGthComunicacionesRecordsService {
     return upserted;
   }
 
+  private buildListWhere(query: GthComunicacionesRecordsQuery): Prisma.GthComunicacionesRecordWhereInput {
+    const includeInactive = query.includeInactive === true;
+    const and: Prisma.GthComunicacionesRecordWhereInput[] = [];
+
+    if (!includeInactive) {
+      and.push({ isActive: true });
+    }
+
+    if (query.hasPhoto === 'true') {
+      and.push({ OR: [{ photoSizeBytes: { gt: 0 } }, { photoAttachmentId: { not: null } }] });
+    } else if (query.hasPhoto === 'false') {
+      and.push({
+        AND: [
+          { OR: [{ photoSizeBytes: null }, { photoSizeBytes: 0 }] },
+          { photoAttachmentId: null },
+        ],
+      });
+    }
+
+    const areaFilter = query.area?.trim();
+    const cargoFilter = query.cargo?.trim();
+    const estadoFilter = query.estado?.trim();
+    const tipoContratoFilter = query.tipoContrato?.trim();
+    if (areaFilter) and.push({ area: areaFilter });
+    if (cargoFilter) and.push({ cargo: cargoFilter });
+    if (estadoFilter) and.push({ estado: estadoFilter });
+    if (tipoContratoFilter) and.push({ tipoContrato: tipoContratoFilter });
+
+    const q = query.q?.trim();
+    if (q) {
+      const qLower = q.toLowerCase();
+      const qDigits = q.replace(/\D/g, '');
+      const or: Prisma.GthComunicacionesRecordWhereInput[] = [
+        { fullName: { contains: qLower, mode: 'insensitive' } },
+        { cargo: { contains: qLower, mode: 'insensitive' } },
+        { area: { contains: qLower, mode: 'insensitive' } },
+        { estado: { contains: qLower, mode: 'insensitive' } },
+        { tipoContrato: { contains: qLower, mode: 'insensitive' } },
+        { fechaIngreso: { contains: qLower, mode: 'insensitive' } },
+      ];
+      if (qDigits.length >= 3) {
+        or.push({ documentId: { contains: qDigits, mode: 'insensitive' } });
+      } else {
+        or.push({ documentId: { contains: qLower, mode: 'insensitive' } });
+      }
+      and.push({ OR: or });
+    }
+
+    return and.length > 0 ? { AND: and } : {};
+  }
+
+  private static readonly listRecordSelect = {
+    id: true,
+    externalRowKey: true,
+    documentId: true,
+    fullName: true,
+    cargo: true,
+    area: true,
+    estado: true,
+    tipoContrato: true,
+    fechaIngreso: true,
+    isActive: true,
+    photoAttachmentId: true,
+    photoSizeBytes: true,
+    photoUploadedAt: true,
+    photoMimeType: true,
+    photoFileName: true,
+    lastSyncedAt: true,
+    createdAt: true,
+    photoAttachment: { select: { id: true, mimeType: true } },
+  } as const;
+
   async listRecords(
     _departmentId: string,
     query: GthComunicacionesRecordsQuery,
   ): Promise<GthComunicacionesRecordsPage> {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 25));
-    const includeInactive = query.includeInactive === true;
+    const where = this.buildListWhere(query);
 
-    const where: Prisma.GthComunicacionesRecordWhereInput = {};
-    if (!includeInactive) {
-      where.isActive = true;
-    }
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.gthComunicacionesRecord.count({ where }),
+      this.prisma.gthComunicacionesRecord.findMany({
+        where,
+        orderBy: [{ fullName: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: AdminGthComunicacionesRecordsService.listRecordSelect,
+      }),
+    ]);
 
-    if (query.hasPhoto === 'true') {
-      where.OR = [{ photoSizeBytes: { gt: 0 } }, { photoAttachmentId: { not: null } }];
-    } else if (query.hasPhoto === 'false') {
-      where.AND = [
-        { OR: [{ photoSizeBytes: null }, { photoSizeBytes: 0 }] },
-        { photoAttachmentId: null },
-      ];
-    }
-
-    const q = query.q?.trim().toLowerCase() ?? '';
-
-    const rows = await this.prisma.gthComunicacionesRecord.findMany({
-      where,
-      orderBy: [{ fullName: 'asc' }],
-      select: {
-        id: true,
-        externalRowKey: true,
-        documentId: true,
-        fullName: true,
-        cargo: true,
-        payload: true,
-        isActive: true,
-        photoAttachmentId: true,
-        photoSizeBytes: true,
-        photoUploadedAt: true,
-        photoMimeType: true,
-        photoFileName: true,
-        lastSyncedAt: true,
-        createdAt: true,
-        photoAttachment: { select: { id: true, mimeType: true } },
-      },
-    });
-
-    const areaFilter = query.area?.trim();
-    const cargoFilter = query.cargo?.trim();
-    const estadoFilter = query.estado?.trim();
-    const tipoContratoFilter = query.tipoContrato?.trim();
-
-    const mapped = rows
-      .map((row) => ({ db: row, record: this.toRecordRow(row) }))
-      .filter(({ db, record }) => {
-        if (q && !this.recordMatchesSearch(record, db.payload as Record<string, unknown>, q)) {
-          return false;
-        }
-        if (areaFilter && record.area !== areaFilter) return false;
-        if (cargoFilter && record.cargo !== cargoFilter) return false;
-        if (estadoFilter && record.estado !== estadoFilter) return false;
-        if (tipoContratoFilter && record.tipo_contrato !== tipoContratoFilter) return false;
-        return true;
-      })
-      .map(({ record }) => record);
-
-    const total = mapped.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    const safePage = Math.min(page, totalPages);
-    const start = (safePage - 1) * limit;
+    const safePage = total > 0 ? Math.min(page, totalPages) : 1;
 
     return {
-      data: mapped.slice(start, start + limit),
+      data: rows.map((row) => this.toRecordRow(row)),
       total,
       page: safePage,
       limit,
@@ -241,69 +270,42 @@ export class AdminGthComunicacionesRecordsService {
     };
   }
 
-  private recordMatchesSearch(
-    record: GthComunicacionesRecordRow,
-    payload: Record<string, unknown>,
-    q: string,
-  ): boolean {
-    const displayText = [
-      record.full_name,
-      record.document_id ?? '',
-      record.document_display ?? '',
-      record.cargo,
-      record.area,
-      record.estado,
-      record.tipo_contrato,
-      record.fecha_ingreso,
-    ]
-      .join(' ')
-      .toLowerCase();
-
-    if (displayText.includes(q)) return true;
-
-    const qDigits = q.replace(/\D/g, '');
-    if (qDigits.length >= 3 && record.document_id?.includes(qDigits)) return true;
-
-    return buildGthPayloadSearchText(payload).includes(q);
-  }
-
   async getFilterOptions(includeInactive?: boolean): Promise<GthComunicacionesFilterOptions> {
-    const where: Prisma.GthComunicacionesRecordWhereInput = {};
-    if (!includeInactive) {
-      where.isActive = true;
-    }
-
-    const rows = await this.prisma.gthComunicacionesRecord.findMany({
-      where,
-      select: { payload: true, cargo: true },
-    });
-
-    const sets: Record<(typeof GTH_FILTER_FIELDS)[number], Set<string>> = {
-      AREA: new Set(),
-      ESTADO: new Set(),
-      CARGO: new Set(),
-      TIPOCONTRATO: new Set(),
-    };
-
-    for (const row of rows) {
-      const payload = (row.payload ?? {}) as Record<string, unknown>;
-      const area = resolveGthFieldValue(payload, 'AREA');
-      const estado = pickGthEstadoLabel(payload);
-      const cargo = resolveGthFieldValue(payload, 'CARGO') || row.cargo;
-      const tipoContrato = resolveGthFieldValue(payload, 'TIPOCONTRATO');
-
-      if (area) sets.AREA.add(area);
-      if (estado && estado !== '—') sets.ESTADO.add(estado);
-      if (cargo) sets.CARGO.add(cargo);
-      if (tipoContrato) sets.TIPOCONTRATO.add(tipoContrato);
-    }
-
+    const where: Prisma.GthComunicacionesRecordWhereInput = includeInactive ? {} : { isActive: true };
     const sort = (a: string, b: string) => a.localeCompare(b, 'es');
+
+    const [areas, estados, cargos, tipos] = await Promise.all([
+      this.prisma.gthComunicacionesRecord.findMany({
+        where: { ...where, area: { not: '—' } },
+        distinct: ['area'],
+        select: { area: true },
+        orderBy: { area: 'asc' },
+      }),
+      this.prisma.gthComunicacionesRecord.findMany({
+        where: { ...where, estado: { not: '—' } },
+        distinct: ['estado'],
+        select: { estado: true },
+        orderBy: { estado: 'asc' },
+      }),
+      this.prisma.gthComunicacionesRecord.findMany({
+        where: { ...where, cargo: { not: '' } },
+        distinct: ['cargo'],
+        select: { cargo: true },
+        orderBy: { cargo: 'asc' },
+      }),
+      this.prisma.gthComunicacionesRecord.findMany({
+        where: { ...where, tipoContrato: { not: '—' } },
+        distinct: ['tipoContrato'],
+        select: { tipoContrato: true },
+        orderBy: { tipoContrato: 'asc' },
+      }),
+    ]);
+
     return {
-      AREA: [...sets.AREA].sort(sort),
-      ESTADO: [...sets.ESTADO].sort(sort),
-      CARGO: [...sets.CARGO].sort(sort),
-      TIPOCONTRATO: [...sets.TIPOCONTRATO].sort(sort),
+      AREA: areas.map((r) => r.area).sort(sort),
+      ESTADO: estados.map((r) => r.estado).sort(sort),
+      CARGO: cargos.map((r) => r.cargo).sort(sort),
+      TIPOCONTRATO: tipos.map((r) => r.tipoContrato).sort(sort),
     };
   }
 
@@ -319,39 +321,52 @@ export class AdminGthComunicacionesRecordsService {
     return byteLen > 0;
   }
 
-  private toRecordRow(row: {
-    id: string;
-    externalRowKey: string;
-    documentId: string | null;
-    fullName: string;
-    cargo: string;
-    payload: unknown;
-    isActive: boolean;
-    photoAttachmentId: string | null;
-    photoData?: Uint8Array | Buffer | null;
-    photoSizeBytes?: number | null;
-    photoUploadedAt: Date | null;
-    lastSyncedAt: Date;
-    createdAt: Date;
-    photoAttachment?: { id: string; mimeType: string } | null;
-  }): GthComunicacionesRecordRow {
-    const payload = (row.payload ?? {}) as Record<string, unknown>;
-    const fullName = buildGthEmployeeFullName(payload);
-    const cargo = resolveGthFieldValue(payload, 'CARGO');
+  private toRecordRow(
+    row: {
+      id: string;
+      externalRowKey: string;
+      documentId: string | null;
+      fullName: string;
+      cargo: string;
+      area?: string;
+      estado?: string;
+      tipoContrato?: string;
+      fechaIngreso?: string;
+      payload?: unknown;
+      isActive: boolean;
+      photoAttachmentId: string | null;
+      photoData?: Uint8Array | Buffer | null;
+      photoSizeBytes?: number | null;
+      photoUploadedAt: Date | null;
+      lastSyncedAt: Date;
+      createdAt: Date;
+      photoAttachment?: { id: string; mimeType: string } | null;
+    },
+  ): GthComunicacionesRecordRow {
+    const payload = row.payload != null ? ((row.payload ?? {}) as Record<string, unknown>) : null;
     const hasPhoto = this.recordHasPhoto(row);
-    const documentId = pickGthDocumentId(payload) ?? row.documentId;
-    const documentDisplay = formatGthDocumentDisplay(payload, documentId) || documentId;
+    const documentId =
+      (payload ? pickGthDocumentId(payload) : null) ?? row.documentId;
+    const documentDisplay =
+      (payload ? formatGthDocumentDisplay(payload, documentId) : null) || documentId;
+    const fullNameFromPayload = payload ? buildGthEmployeeFullName(payload) : null;
     return {
       id: row.id,
       external_row_key: row.externalRowKey,
       document_id: documentId,
       document_display: documentDisplay || null,
-      full_name: fullName !== 'Empleado GTH' ? fullName : row.fullName,
-      cargo: cargo || row.cargo,
-      estado: pickGthEstadoLabel(payload),
-      area: resolveGthFieldValue(payload, 'AREA') || '—',
-      tipo_contrato: resolveGthFieldValue(payload, 'TIPOCONTRATO') || '—',
-      fecha_ingreso: pickGthFingreso(payload),
+      full_name:
+        fullNameFromPayload && fullNameFromPayload !== 'Empleado GTH'
+          ? fullNameFromPayload
+          : row.fullName,
+      cargo: (payload ? resolveGthFieldValue(payload, 'CARGO') : '') || row.cargo,
+      estado: row.estado ?? (payload ? pickGthEstadoLabel(payload) : '—'),
+      area: row.area ?? (payload ? resolveGthFieldValue(payload, 'AREA') || '—' : '—'),
+      tipo_contrato:
+        row.tipoContrato ??
+        (payload ? resolveGthFieldValue(payload, 'TIPOCONTRATO') || '—' : '—'),
+      fecha_ingreso:
+        row.fechaIngreso ?? (payload ? pickGthFingreso(payload) : '—'),
       is_active: row.isActive,
       has_photo: hasPhoto,
       photo_attachment_id: hasPhoto ? row.photoAttachmentId : null,

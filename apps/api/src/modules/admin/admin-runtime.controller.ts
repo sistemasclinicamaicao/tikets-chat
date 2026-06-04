@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { Roles } from '../../common/auth/roles.decorator';
@@ -7,6 +7,7 @@ import { getBuildMetadata } from '../../common/runtime/runtime-metadata';
 import { StorageService } from '../storage/storage.service';
 import { GthHostingerMysqlService } from '../gth-mysql/gth-hostinger-mysql.service';
 import { GthMysqlPhotoSyncService } from '../gth-mysql/gth-mysql-photo-sync.service';
+import { isGthMysqlEnsureSchemaAllowed } from '../../common/runtime/production-security';
 
 /**
  * Valores efectivos no secretos (solo lectura). Secretos nunca se exponen aquí.
@@ -78,6 +79,11 @@ export class AdminRuntimeController {
   @Post('gth-mysql/ensure-schema')
   @ApiOperation({ summary: 'Recrear tabla gth_fotos en MySQL Hostinger (destructivo)' })
   async ensureGthMysqlSchema() {
+    if (!isGthMysqlEnsureSchemaAllowed()) {
+      throw new ForbiddenException(
+        'Operación no permitida. Defina GTH_MYSQL_ALLOW_ENSURE_SCHEMA=true solo durante mantenimiento.',
+      );
+    }
     const info = this.gthMysql.getRuntimeInfo();
     if (!info.gth_mysql_enabled) {
       return { ...info, ok: false, error: 'GTH MySQL no configurado' };

@@ -19,7 +19,10 @@ import { CurrentUser } from '../../common/auth/current-user.decorator';
 import type { UserPayload } from '../../common/auth/jwt-user.payload';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { isRootUser } from '../../common/auth/root-user.util';
-import { assertInventoryDepartmentAccess } from '../inventory/inventory-access';
+import {
+  assertInventoryDepartmentAccess,
+  assertInventoryWriteAccess,
+} from '../inventory/inventory-access';
 import { AdminGthComunicacionesRecordsService } from './admin-gth-comunicaciones-records.service';
 
 const MAX_GTH_PHOTO_BYTES = 6 * 1024 * 1024;
@@ -106,7 +109,7 @@ export class ComunicacionesController {
     if (!departmentId?.trim()) {
       throw new BadRequestException('departmentId requerido');
     }
-    assertInventoryDepartmentAccess(user, departmentId.trim());
+    assertInventoryWriteAccess(user, departmentId.trim());
     if (!file?.buffer?.length) {
       throw new BadRequestException('Archivo requerido');
     }

@@ -31,7 +31,8 @@
     "export:gth-fotos-html": "ts-node -r tsconfig-paths/register prisma/export-gth-photos-html.ts",
     "clear:gth-comunicaciones-photos": "ts-node -r tsconfig-paths/register prisma/clear-gth-comunicaciones-photos.ts",
     "sync:gth-photos-mysql": "ts-node -r tsconfig-paths/register prisma/sync-gth-photos-to-mysql.ts",
-    "rename:gth-photo-filenames": "ts-node -r tsconfig-paths/register prisma/rename-gth-photo-filenames.ts",
+    "rename:gth-photo-filenames": "node prisma/run-rename-gth-photo-filenames.js",
+    "backfill:gth-list-columns": "node prisma/run-backfill-gth-list-columns.js",
     "seed:inventory": "ts-node -r tsconfig-paths/register prisma/seed-inventory-sistemas.ts"
   },
   "dependencies": {
