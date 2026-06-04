@@ -5855,6 +5855,18 @@ button.chat-person:focus-visible:not(:disabled) {
   filter: brightness(1.15);
 }
 
+.inventory-card--blank-canvas {
+  padding: 0;
+  border: var(--border-hairline);
+  background: var(--brand-surface);
+  overflow: hidden;
+}
+.inventory-dept-canvas {
+  display: block;
+  min-height: min(62vh, 780px);
+  width: 100%;
+  background: var(--brand-surface);
+}
 .inventory-page {
   width: 100%;
   max-width: 100%;
@@ -5982,7 +5994,14 @@ button.chat-person:focus-visible:not(:disabled) {
   background: rgba(248, 250, 252, 0.9);
 }
 .inventory-api-pc-table__cell--empty {
-  color: #94a3b8;
+  color: var(--color-text-secondary);
+}
+.inventory-api-pc-table__empty-row {
+  padding: 1.25rem 1rem;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-on-light);
 }
 .inventory-api-pc-table__placeholder {
   display: inline-block;

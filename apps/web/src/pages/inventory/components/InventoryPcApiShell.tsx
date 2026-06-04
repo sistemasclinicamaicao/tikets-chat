@@ -17,6 +17,8 @@ type Props = {
   departmentId: string;
   departmentName: string;
   showAdminSettingsLink: boolean;
+  /** Vista reducida para el departamento Mantenimiento (menos texto, tabla vacía limpia). */
+  compact?: boolean;
   /** Nombre exacto de la integración en Configuración (por defecto api-bd.sistemas). */
   integrationName?: string;
 };
@@ -48,6 +50,7 @@ export function InventoryPcApiShell({
   departmentId,
   departmentName,
   showAdminSettingsLink,
+  compact = false,
   integrationName = DEFAULT_PC_INTEGRATION_NAME,
 }: Props) {
   /** Carga inicial / recarga desde BD (solo GET interno, sin API externa). */
@@ -141,20 +144,29 @@ export function InventoryPcApiShell({
       <header className="inventory-page-header">
         <div>
           <h2 className="inventory-page-title">BD HOJA DE VIDA</h2>
-          <p className="inventory-page-subtitle">
-            Origen único: tabla PostgreSQL <code>hoja_de_vida</code> del departamento «{departmentName}». La integración «
-            {integrationName}» solo se usa si pulsa <strong>Sincronizar</strong> (no al abrir esta pantalla).
-          </p>
+          {compact ? (
+            <p className="inventory-page-subtitle">
+              Departamento «{departmentName}» · datos en <code>hoja_de_vida</code>. Sincronice desde «
+              {integrationName}» cuando lo necesite.
+            </p>
+          ) : (
+            <p className="inventory-page-subtitle">
+              Origen único: tabla PostgreSQL <code>hoja_de_vida</code> del departamento «{departmentName}». La integración «
+              {integrationName}» solo se usa si pulsa <strong>Sincronizar</strong> (no al abrir esta pantalla).
+            </p>
+          )}
         </div>
       </header>
 
       <div className="inventory-api-shell">
         <div className="inventory-api-shell__toolbar">
-          <p className="inventory-api-shell__lead" style={{ margin: 0 }}>
-            Al entrar aquí <strong>no</strong> se llama al API externo: solo se lee la BD interna. Use{' '}
-            <strong>Sincronizar</strong> cuando quiera traer datos del API a <code>hoja_de_vida</code> (misma máscara de
-            campos que en el sondeo de la integración).
-          </p>
+          {!compact ? (
+            <p className="inventory-api-shell__lead" style={{ margin: 0 }}>
+              Al entrar aquí <strong>no</strong> se llama al API externo: solo se lee la BD interna. Use{' '}
+              <strong>Sincronizar</strong> cuando quiera traer datos del API a <code>hoja_de_vida</code> (misma máscara de
+              campos que en el sondeo de la integración).
+            </p>
+          ) : null}
           <div className="inventory-api-shell__toolbar-actions">
             <button
               type="button"
@@ -191,24 +203,43 @@ export function InventoryPcApiShell({
         {showTable && payload ? (
           <>
             <p className="inventory-api-shell__meta">
-              Tabla <code>hoja_de_vida</code> · <strong>{payload.total_stored}</strong> registro(s) en BD · Integración:{' '}
-              <strong>{payload.integration.name}</strong>
-              {httpOk ? (
+              {compact ? (
                 <>
-                  {' '}
-                  · {payload.http.status_text}
-                </>
-              ) : null}
-              {payload.last_synced_at ? (
-                <>
-                  {' '}
-                  · Última importación:{' '}
-                  <time dateTime={payload.last_synced_at}>
-                    {new Date(payload.last_synced_at).toLocaleString()}
-                  </time>
+                  <strong>{payload.total_stored}</strong> registro(s) · {payload.integration.name}
+                  {payload.last_synced_at ? (
+                    <>
+                      {' '}
+                      · Última sync:{' '}
+                      <time dateTime={payload.last_synced_at}>
+                        {new Date(payload.last_synced_at).toLocaleString()}
+                      </time>
+                    </>
+                  ) : (
+                    <> · Sin importación aún</>
+                  )}
                 </>
               ) : (
-                <> · Aún no hay importación registrada</>
+                <>
+                  Tabla <code>hoja_de_vida</code> · <strong>{payload.total_stored}</strong> registro(s) en BD · Integración:{' '}
+                  <strong>{payload.integration.name}</strong>
+                  {httpOk ? (
+                    <>
+                      {' '}
+                      · {payload.http.status_text}
+                    </>
+                  ) : null}
+                  {payload.last_synced_at ? (
+                    <>
+                      {' '}
+                      · Última importación:{' '}
+                      <time dateTime={payload.last_synced_at}>
+                        {new Date(payload.last_synced_at).toLocaleString()}
+                      </time>
+                    </>
+                  ) : (
+                    <> · Aún no hay importación registrada</>
+                  )}
+                </>
               )}
             </p>
 
@@ -227,11 +258,12 @@ export function InventoryPcApiShell({
                   <tbody>
                     {rows.length === 0 ? (
                       <tr>
-                        {INVENTORY_PC_API_FIELDS.map((field) => (
-                          <td key={field} className="inventory-api-pc-table__cell inventory-api-pc-table__cell--empty">
-                            <span className="inventory-api-pc-table__placeholder">—</span>
-                          </td>
-                        ))}
+                        <td
+                          colSpan={INVENTORY_PC_API_FIELDS.length}
+                          className="inventory-api-pc-table__cell inventory-api-pc-table__cell--empty inventory-api-pc-table__empty-row"
+                        >
+                          Sin registros en la BD. Use <strong>Sincronizar</strong> para importar desde el API.
+                        </td>
                       </tr>
                     ) : (
                       pageRows.map((row, ri) => (
@@ -287,7 +319,7 @@ export function InventoryPcApiShell({
                   </div>
                 </footer>
               ) : null}
-              {httpOk && rows.length === 0 ? (
+              {!compact && httpOk && rows.length === 0 ? (
                 <p className="inventory-api-shell__hint">
                   No hay filas en la tabla interna. Pulse <strong>Sincronizar</strong> para traer datos del API a la BD
                   (requiere permiso de edición en inventario).

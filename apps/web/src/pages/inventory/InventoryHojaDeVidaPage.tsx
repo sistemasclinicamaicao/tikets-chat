@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   ApiError,
   canWriteInventoryForDepartment,
@@ -29,7 +29,11 @@ import { InventoryPcApiShell } from './components/InventoryPcApiShell';
 import { InventoryPcSubnav } from './components/InventoryPcSubnav';
 import { InventorySubnav } from './components/InventorySubnav';
 import { InventoryToolbar } from './components/InventoryToolbar';
-import { DEPARTMENTS_BASE } from '../departments/departmentExperience';
+import {
+  DEPARTMENTS_BASE,
+  isMantenimientoDepartment,
+  usesBdHojaDeVidaBlankCanvas,
+} from '../departments/departmentExperience';
 import {
   CATEGORY_TITLE,
   SLUG_TO_CATEGORY,
@@ -41,11 +45,13 @@ import {
 import { getMergedChecklists } from './inventoryPcChecklists';
 
 export function InventoryHojaDeVidaPage() {
+  const { pathname } = useLocation();
   const { departmentId = '', categorySlug = 'pc' } = useParams<{
     departmentId: string;
     categorySlug: string;
   }>();
 
+  const isBdHojaDeVidaRoute = pathname.includes('/bd-hoja-de-vida');
   const apiCategory = SLUG_TO_CATEGORY[categorySlug] ?? 'pc';
   const title = CATEGORY_TITLE[apiCategory] ?? 'Inventario';
 
@@ -78,6 +84,9 @@ export function InventoryHojaDeVidaPage() {
   const [checklistRev, setChecklistRev] = useState(0);
 
   const canWrite = canWriteInventoryForDepartment(profile, departmentId);
+  const departmentName = deptList.find((d) => d.id === departmentId)?.name ?? '';
+  const mantenimientoFocus = isMantenimientoDepartment(departmentName);
+  const mantenimientoBlankCanvas = usesBdHojaDeVidaBlankCanvas(departmentId, departmentName) && isBdHojaDeVidaRoute;
 
   const pcChecklists = useMemo(() => getMergedChecklists(), [checklistRev]);
 
@@ -432,15 +441,28 @@ export function InventoryHojaDeVidaPage() {
 
   return (
     <section className="inventory-page">
-      <InventorySubnav departmentId={departmentId} />
-      {apiCategory === 'pc' ? <InventoryPcSubnav departmentId={departmentId} /> : null}
+      {!mantenimientoBlankCanvas ? (
+        <InventorySubnav departmentId={departmentId} departmentName={departmentName} />
+      ) : null}
+      {apiCategory === 'pc' && !mantenimientoFocus && !mantenimientoBlankCanvas ? (
+        <InventoryPcSubnav departmentId={departmentId} />
+      ) : null}
 
-      <div className="module-card inventory-card">
-        {apiCategory === 'pc' ? (
+      <div
+        className={
+          mantenimientoBlankCanvas
+            ? 'module-card inventory-card inventory-card--blank-canvas'
+            : 'module-card inventory-card'
+        }
+      >
+        {mantenimientoBlankCanvas ? (
+          <div className="inventory-dept-canvas" aria-label="Área de trabajo del departamento" />
+        ) : apiCategory === 'pc' ? (
           <InventoryPcApiShell
             departmentId={departmentId}
-            departmentName={deptList.find((d) => d.id === departmentId)?.name ?? '—'}
+            departmentName={departmentName || '—'}
             showAdminSettingsLink={profile ? isGlobalAdminRole(profile.global_role) : false}
+            compact={mantenimientoFocus}
           />
         ) : (
           <>

@@ -19,6 +19,7 @@ Guía central para localizar toda la documentación del repositorio `tikets-chat
 | Documento | Contenido |
 |-----------|-----------|
 | [CHANGELOG_JUNIO_2026.md](CHANGELOG_JUNIO_2026.md) | GTH Comunicaciones, fotos en BD, `usuario_general`, despliegue |
+| [DEPARTAMENTOS_UI_Y_EXPERIENCIA.md](DEPARTAMENTOS_UI_Y_EXPERIENCIA.md) | Contraste UI, Chat, lienzo en blanco Mantenimiento / BD Hoja de Vida |
 | [GTH_ALTAS_COMUNICACIONES.md](GTH_ALTAS_COMUNICACIONES.md) | Guía operativa Altas GTH y fotografías |
 
 ## Cambios recientes (Mayo 2026)
@@ -71,6 +72,8 @@ Guía central para localizar toda la documentación del repositorio `tikets-chat
 | Estilos globales | `apps/web/src/index.css` |
 | Chat (UI) | `apps/web/src/pages/ChatPage.tsx` |
 | Layout autenticado | `apps/web/src/pages/ProtectedLayout.tsx` |
+| Experiencia departamentos | `apps/web/src/pages/departments/departmentExperience.ts` |
+| BD Hoja de Vida (web) | `apps/web/src/pages/inventory/InventoryHojaDeVidaPage.tsx` |
 | Login | `apps/web/src/pages/LoginPage.tsx` |
 | API cliente | `apps/web/src/lib/api.ts` |
 | Dispositivo cliente | `apps/web/src/lib/clientDevice.ts` |
@@ -83,6 +86,7 @@ Guía central para localizar toda la documentación del repositorio `tikets-chat
 
 | Fase | Commit | Descripción |
 |------|--------|-------------|
+| Junio 2026 | `64e28b6` | UI contraste, Chat, departamentos lienzo en blanco — ver [docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md](docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md) |
 | Junio 2026 | `c3dd871` | GTH Altas, fotos BD, `usuario_general` |
 | Mayo 2026 | `cebab33` | UI Aura, paleta, desktop shell |
 

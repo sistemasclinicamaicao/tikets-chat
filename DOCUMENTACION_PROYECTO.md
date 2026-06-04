@@ -9,6 +9,8 @@
 
 La **vision de producto** a medio plazo es un hub unificado multi-departamento (inventario/HV en algunas areas, formularios en otras, comunicacion corporativa). Ver [docs/VISION_PALICATIVO.md](docs/VISION_PALICATIVO.md).
 
+Experiencias por departamento (contraste UI, Mantenimiento, lienzo en blanco BD Hoja de Vida): [docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md](docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md).
+
 Esta documentacion describe arquitectura, modulos, endpoints, base de datos, despliegue local y operacion.
 
 ---
