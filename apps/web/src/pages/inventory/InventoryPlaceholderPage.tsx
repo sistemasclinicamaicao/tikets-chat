@@ -14,7 +14,9 @@ export function InventoryPlaceholderPage({ title, description }: InventoryPlaceh
   return (
     <section className="module-card">
       <h2>{title}</h2>
-      <p style={{ fontSize: '0.9rem', opacity: 0.9 }}>{description}</p>
+      <p className="text-secondary" style={{ fontSize: '0.9rem' }}>
+        {description}
+      </p>
       <p>
         <Link to={back}>Volver al departamento</Link>
       </p>

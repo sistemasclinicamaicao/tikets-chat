@@ -64,13 +64,13 @@ export function TicketsPage() {
   return (
     <section>
       {live ? (
-        <p style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '0.5rem' }}>
+        <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
           Lista actualizada en tiempo real
         </p>
       ) : null}
       <form className="module-card" onSubmit={onSubmit}>
         <h2>Nuevo ticket</h2>
-        <p style={{ fontSize: '0.9rem', opacity: 0.9, marginTop: 0 }}>
+        <p className="text-secondary" style={{ fontSize: '0.9rem', marginTop: 0 }}>
           Elija el área a la que va dirigida su solicitud. La prioridad y el asunto se asignan
           automáticamente; si el área tiene plantilla propia, quedará vinculada al ticket. Si la
           plantilla exige campos obligatorios, el administrador debe dejarlos opcionales o ampliar
@@ -94,17 +94,17 @@ export function TicketsPage() {
           )}
         </select>
         {selectedDept?.createTicketTemplate ? (
-          <p style={{ fontSize: '0.85rem', opacity: 0.88, marginBottom: 0 }}>
+          <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             <strong>Plantilla del área:</strong> {selectedDept.createTicketTemplate.name}
           </p>
         ) : selectedDept ? (
-          <p style={{ fontSize: '0.85rem', opacity: 0.88, marginBottom: 0 }}>
+          <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             Este departamento no tiene plantilla de solicitud configurada; se creará un ticket
             estándar.
           </p>
         ) : null}
         {selectedDept?.assetInventoryCodeExample ? (
-          <p style={{ fontSize: '0.85rem', opacity: 0.88, marginBottom: 0 }}>
+          <p className="text-secondary" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             Los equipos del área se registran con códigos como{' '}
             <strong>{selectedDept.assetInventoryCodeExample}</strong>
             {selectedDept.assetInventoryCodePattern

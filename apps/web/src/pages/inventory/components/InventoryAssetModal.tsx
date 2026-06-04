@@ -637,7 +637,9 @@ export function InventoryAssetModal(props: Props) {
               {photoPreview ? (
                 <img src={photoPreview} alt="" className="inventory-photo-preview" />
               ) : (
-                <p style={{ fontSize: '0.85rem', opacity: 0.85 }}>Sin foto en almacenamiento.</p>
+                <p className="text-secondary" style={{ fontSize: '0.85rem' }}>
+                  Sin foto en almacenamiento.
+                </p>
               )}
               <input
                 type="file"
