@@ -9,7 +9,7 @@
 | **Mantenimiento** | Experiencia `mantenimiento` en `departmentExperience.ts`; nav reducido |
 | **Lienzo BD HV** | Departamentos `cmp09a7j10003kgf40vb5luez` y `cmp08f1if0000kgf4k6zdddum`: BD Hoja de Vida sin tabla (lienzo blanco) |
 
-**Commits:** `3a3ba65`, `64e28b6`, y commit de departamentos/lienzo en la misma rama.
+**Commits:** `3a3ba65`, `64e28b6`, `49d7f30`.
 
 Guía detallada: [DEPARTAMENTOS_UI_Y_EXPERIENCIA.md](DEPARTAMENTOS_UI_Y_EXPERIENCIA.md)
 

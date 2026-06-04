@@ -8,7 +8,7 @@ Documentación del trabajo en **tipografía**, **Chat (lista de canales)** y **e
 |--------|-------------|
 | `3a3ba65` | Alto contraste tipografía sidebar y Configuración |
 | `64e28b6` | Tipografía negrita sidebar + contraste lista de canales Chat |
-| *(pendiente push)* | Experiencia Mantenimiento, lienzo en blanco BD Hoja de Vida |
+| `49d7f30` | Experiencia Mantenimiento, lienzo en blanco BD Hoja de Vida |
 
 ---
 

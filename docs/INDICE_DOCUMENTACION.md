@@ -86,7 +86,7 @@ Guía central para localizar toda la documentación del repositorio `tikets-chat
 
 | Fase | Commit | Descripción |
 |------|--------|-------------|
-| Junio 2026 | `64e28b6` | UI contraste, Chat, departamentos lienzo en blanco — ver [docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md](docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md) |
+| Junio 2026 | `3a3ba65`, `64e28b6`, `49d7f30` | UI contraste, Chat, departamentos lienzo en blanco — ver [docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md](docs/DEPARTAMENTOS_UI_Y_EXPERIENCIA.md) |
 | Junio 2026 | `c3dd871` | GTH Altas, fotos BD, `usuario_general` |
 | Mayo 2026 | `cebab33` | UI Aura, paleta, desktop shell |
 
