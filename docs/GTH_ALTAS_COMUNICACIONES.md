@@ -9,7 +9,7 @@ Módulo para sincronizar el directorio GTH y registrar la **fotografía de prese
 
 ## Flujo operativo
 
-1. **Sincronizar directorio** (admin): botón «Sincronizar ahora» o desde Configuración → Usuarios GTH.
+1. **Sincronizar directorio**: botón «Sincronizar ahora» (usuarios del departamento Comunicaciones o admin global). Automático a las **8:00, 12:00 y 16:00** (America/Bogota). Admin también desde Configuración → Usuarios GTH.
 2. La tabla lista empleados activos (opción «Ver inactivos»).
 3. En la columna **Fotografía**:
    - Icono naranja: **subir** o **cambiar** imagen.
@@ -28,6 +28,7 @@ Módulo para sincronizar el directorio GTH y registrar la **fotografía de prese
 - La imagen se guarda en PostgreSQL (`photo_data`), no en MinIO para registros nuevos de este módulo.
 - **`photo_file_name`:** `{cedula}.{ext}` (p. ej. `1067896086.jpg`).
 - **Listado:** columnas desnormalizadas `area`, `estado`, `tipo_contrato`, `fecha_ingreso` para filtros y paginación en BD (sin cargar `payload` completo).
+- **Sincronizar directorio:** admin global, `usuario_general` asignado a Comunicaciones, o rol operativo de área (`assertGthDirectorySyncAccess`). Cron: `GTH_DIRECTORY_SYNC_CRON` (default `0 0 8,12,16 * * *`).
 - **Subir foto:** requiere rol operativo en el departamento (`assertInventoryWriteAccess`); el auditor solo consulta.
 - Formatos: imágenes vía `multipart/form-data`, campo `file`.
 
@@ -35,6 +36,7 @@ Módulo para sincronizar el directorio GTH y registrar la **fotografía de prese
 
 | Método | Ruta | Uso |
 |--------|------|-----|
+| POST | `/comunicaciones/gth-directory/sync?departmentId=…` | Sincronizar directorio GTH |
 | GET | `/comunicaciones/gth-records?departmentId=…` | Listado paginado |
 | GET | `/comunicaciones/gth-records/:id?departmentId=…` | Detalle (carta de presentación) |
 | POST | `/comunicaciones/gth-records/:id/photo?departmentId=…` | Subir foto |

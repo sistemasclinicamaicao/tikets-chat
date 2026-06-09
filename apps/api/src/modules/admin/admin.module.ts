@@ -15,6 +15,7 @@ import { AdminUsersService } from './admin-users.service';
 import { AdminWorkflowsController } from './admin-workflows.controller';
 import { AdminWorkflowsService } from './admin-workflows.service';
 import { ComunicacionesController } from './comunicaciones.controller';
+import { GthDirectorySyncScheduler } from './gth-directory-sync.scheduler';
 import { GthMysqlModule } from '../gth-mysql/gth-mysql.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { GthMysqlModule } from '../gth-mysql/gth-mysql.module';
     AdminGthComunicacionesRecordsService,
     GthUserSyncService,
     AdminIntegrationsService,
+    GthDirectorySyncScheduler,
   ],
   exports: [AdminIntegrationsService, AdminGthComunicacionesRecordsService, GthUserSyncService],
 })

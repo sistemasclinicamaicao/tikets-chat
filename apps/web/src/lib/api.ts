@@ -1539,6 +1539,34 @@ export function postAdminGthDirectorySync(signal?: AbortSignal) {
   return request<AdminGthDirectorySyncResponse>('/admin/users/gth/sync', 'POST', undefined, true, signal);
 }
 
+/** Sincroniza GTH desde Altas Comunicaciones (usuarios del departamento o admin). */
+export function postComunicacionesGthDirectorySync(departmentId: string, signal?: AbortSignal) {
+  const q = new URLSearchParams({ departmentId });
+  return request<AdminGthDirectorySyncResponse>(
+    `/comunicaciones/gth-directory/sync?${q.toString()}`,
+    'POST',
+    undefined,
+    true,
+    signal,
+  );
+}
+
+/** Puede ejecutar sincronización GTH en Comunicaciones (no auditor). */
+export function canSyncGthDirectoryForDepartment(
+  profile: CurrentUserProfile | null,
+  departmentId: string,
+): boolean {
+  if (!profile) return false;
+  if (normalizeGlobalRole(profile.global_role) === 'auditor') return false;
+  if (isGlobalAdminRole(profile.global_role)) return true;
+  if (isUsuarioGeneralRole(profile.global_role)) {
+    return (profile.department_roles ?? []).some((r) => r.department_id === departmentId);
+  }
+  return (profile.department_roles ?? []).some(
+    (r) => r.department_id === departmentId && hasOperationalDepartmentRole(r.role),
+  );
+}
+
 /** Propaga `gth_directory` → tabla `users` (login OTP) sin llamar al API externo. */
 export function postAdminGthSyncUsers(signal?: AbortSignal) {
   return request<AdminGthUsersSyncResponse>(

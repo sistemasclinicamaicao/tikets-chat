@@ -8,7 +8,8 @@ import {
   filterDepartmentsForInventory,
   getCurrentUserProfile,
   getTicketDepartments,
-  postAdminGthDirectorySync,
+  canSyncGthDirectoryForDepartment,
+  postComunicacionesGthDirectorySync,
   uploadGthComunicacionesPhoto,
   type CurrentUserProfile,
   type GthComunicacionesRecordRow,
@@ -207,8 +208,8 @@ export function ComunicacionesGthPage() {
     [deptList, departmentId],
   );
 
-  const isAdmin = profile?.global_role === 'admin';
   const isRoot = isRootUser(profile);
+  const canSync = canSyncGthDirectoryForDepartment(profile, departmentId);
 
   useEffect(() => {
     void getCurrentUserProfile()
@@ -278,12 +279,12 @@ export function ComunicacionesGthPage() {
   const canAccess = !profile || allowedDepts.some((d) => d.id === departmentId);
 
   async function onSync() {
-    if (!isAdmin || syncing) return;
+    if (!canSync || syncing) return;
     setSyncing(true);
     setSyncHint(null);
     setError('');
     try {
-      const sync = await postAdminGthDirectorySync();
+      const sync = await postComunicacionesGthDirectorySync(departmentId);
       if (sync.ok) {
         setSyncHint(
           `${sync.imported} registro(s) importados · ${sync.records_upserted ?? 0} actualizados en Comunicaciones`,
@@ -356,11 +357,12 @@ export function ComunicacionesGthPage() {
           <h1>Personal GTH — Comunicaciones</h1>
           <p className="inventory-header__subtitle">
             Sincronice el directorio GTH y registre la fotografía de cada empleado activo desde
-            esta tabla. También puede sincronizar desde Configuración → Usuarios GTH.
+            esta tabla. La sincronización automática corre a las 8:00, 12:00 y 16:00 (hora Colombia).
+            Los administradores también pueden sincronizar desde Configuración → Usuarios GTH.
           </p>
         </div>
         <div className="inventory-header__actions">
-          {isAdmin ? (
+          {canSync ? (
             <button
               type="button"
               className="inventory-btn"

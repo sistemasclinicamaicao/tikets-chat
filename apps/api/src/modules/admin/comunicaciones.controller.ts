@@ -20,10 +20,12 @@ import type { UserPayload } from '../../common/auth/jwt-user.payload';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { isRootUser } from '../../common/auth/root-user.util';
 import {
+  assertGthDirectorySyncAccess,
   assertInventoryDepartmentAccess,
   assertInventoryWriteAccess,
 } from '../inventory/inventory-access';
 import { AdminGthComunicacionesRecordsService } from './admin-gth-comunicaciones-records.service';
+import { AdminGthDirectoryService } from './admin-gth-directory.service';
 
 const MAX_GTH_PHOTO_BYTES = 6 * 1024 * 1024;
 
@@ -32,7 +34,31 @@ const MAX_GTH_PHOTO_BYTES = 6 * 1024 * 1024;
 @Controller('comunicaciones')
 @UseGuards(JwtAuthGuard)
 export class ComunicacionesController {
-  constructor(private readonly gthRecords: AdminGthComunicacionesRecordsService) {}
+  constructor(
+    private readonly gthRecords: AdminGthComunicacionesRecordsService,
+    private readonly gthDirectory: AdminGthDirectoryService,
+  ) {}
+
+  @Post('gth-directory/sync')
+  @ApiOperation({
+    summary: 'Sincronizar directorio GTH desde CONEXION-GTH (Comunicaciones)',
+    description:
+      'Importa el directorio GTH y actualiza registros de Comunicaciones. Disponible para admin global y usuarios del departamento Comunicaciones.',
+  })
+  async syncGthDirectory(
+    @Query('departmentId') departmentId: string,
+    @CurrentUser() user: UserPayload,
+  ) {
+    if (!departmentId?.trim()) {
+      throw new BadRequestException('departmentId requerido');
+    }
+    const comunicacionesDeptId = await this.gthRecords.resolveComunicacionesDepartmentId();
+    if (!comunicacionesDeptId || comunicacionesDeptId !== departmentId.trim()) {
+      throw new BadRequestException('La sincronización GTH solo aplica al departamento Comunicaciones');
+    }
+    assertGthDirectorySyncAccess(user, departmentId.trim());
+    return this.gthDirectory.syncFromIntegration(user.userId);
+  }
 
   @Get('gth-records/filter-options')
   @ApiOperation({ summary: 'Valores distintos para filtros de registros GTH' })

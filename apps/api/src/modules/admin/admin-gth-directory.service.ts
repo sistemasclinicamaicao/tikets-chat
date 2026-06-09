@@ -202,8 +202,8 @@ export class AdminGthDirectoryService {
   }
 
   /** Importa desde CONEXION-GTH con diff (altas por cédula / external_row_key). */
-  async syncFromIntegration(actorUserId: string) {
-    const fetched = await this.integrations.fetchGthDirectory(actorUserId);
+  async syncFromIntegration(actorUserId: string | null) {
+    const fetched = await this.integrations.fetchGthDirectory(actorUserId ?? '');
     const integration = fetched.integration as { id: string; name: string };
     const http = fetched.http as { ok: boolean; status: number; status_text: string };
 
